@@ -37,14 +37,14 @@
 └──────────────────────────────────────────────────────────┘
 ```
 
-| Agent | 职责 | 核心算法 |
-|---|---|---|
-| **PhotoTutorAgent** | 拍照会话管理 + 引导编排 + 回复评判 | 状态机 (9状态) |
-| **AssessmentAgent** | 知识点掌握度追踪 | 贝叶斯知识追踪 (BKT) |
-| **TutorAgent** | 苏格拉底式提问，不直接给答案 | Prompt Engineering |
-| **CurriculumAgent** | 学习路径规划 + 间隔重复排期 | SM-2 + 知识图谱拓扑排序 |
-| **HintAgent** | 3级渐进提示：元认知→脚手架→直接 | 最近发展区 (ZPD) |
-| **EngagementAgent** | 学习状态监测：挫败/无聊/疲劳 | 行为规则引擎 |
+| Agent               | 职责                               | 核心算法                |
+| ------------------- | ---------------------------------- | ----------------------- |
+| **PhotoTutorAgent** | 拍照会话管理 + 引导编排 + 回复评判 | 状态机 (9状态)          |
+| **AssessmentAgent** | 知识点掌握度追踪                   | 贝叶斯知识追踪 (BKT)    |
+| **TutorAgent**      | 苏格拉底式提问，不直接给答案       | Prompt Engineering      |
+| **CurriculumAgent** | 学习路径规划 + 间隔重复排期        | SM-2 + 知识图谱拓扑排序 |
+| **HintAgent**       | 3级渐进提示：元认知→脚手架→直接    | 最近发展区 (ZPD)        |
+| **EngagementAgent** | 学习状态监测：挫败/无聊/疲劳       | 行为规则引擎            |
 
 ### 拍照引导流程
 
@@ -80,11 +80,13 @@ uvicorn api.main:app --reload --port 8000
 ### 打开前端
 
 浏览器直接打开：
+
 ```
 frontend/demo.html
 ```
 
 或者访问 Swagger API 文档：
+
 ```
 http://localhost:8000/docs
 ```
@@ -139,18 +141,18 @@ multi-agent-education/
 
 ## API 端点
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| `GET` | `/api/v1/health` | 健康检查 |
-| `POST` | `/api/v1/photo-solve` | 📷 上传图片，开始引导 |
-| `POST` | `/api/v1/photo-session/{id}/reply` | 💬 回复引导问题 |
-| `GET` | `/api/v1/photo-session/{id}` | 查询会话状态 |
-| `GET` | `/api/v1/profile/{learner_id}` | 学生画像 + BKT |
-| `POST` | `/api/v1/submit` | 提交答题结果 |
-| `POST` | `/api/v1/question` | 提问 |
-| `POST` | `/api/v1/message` | 发送消息 |
-| `GET` | `/api/v1/progress/{learner_id}` | 学习进度 |
-| `GET` | `/api/v1/knowledge-graph` | 知识图谱 |
+| 方法   | 路径                               | 说明                  |
+| ------ | ---------------------------------- | --------------------- |
+| `GET`  | `/api/v1/health`                   | 健康检查              |
+| `POST` | `/api/v1/photo-solve`              | 📷 上传图片，开始引导 |
+| `POST` | `/api/v1/photo-session/{id}/reply` | 💬 回复引导问题       |
+| `GET`  | `/api/v1/photo-session/{id}`       | 查询会话状态          |
+| `GET`  | `/api/v1/profile/{learner_id}`     | 学生画像 + BKT        |
+| `POST` | `/api/v1/submit`                   | 提交答题结果          |
+| `POST` | `/api/v1/question`                 | 提问                  |
+| `POST` | `/api/v1/message`                  | 发送消息              |
+| `GET`  | `/api/v1/progress/{learner_id}`    | 学习进度              |
+| `GET`  | `/api/v1/knowledge-graph`          | 知识图谱              |
 
 ---
 
@@ -177,15 +179,13 @@ P(L_new) = P(L|obs) + (1 - P(L|obs)) × P(T)
 
 ## 三种语言实现
 
-| | Python | Java | Go |
-|---|---|---|---|
-| **框架** | FastAPI + LangGraph | Spring Boot + Spring AI | net/http |
-| **事件** | asyncio EventBus | ApplicationEventPublisher | goroutine + channel |
-| **适合** | AI/ML 岗位 | 后端/架构师 | 基础架构/高并发 |
+|          | Python              | Java                      | Go                  |
+| -------- | ------------------- | ------------------------- | ------------------- |
+| **框架** | FastAPI + LangGraph | Spring Boot + Spring AI   | net/http            |
+| **事件** | asyncio EventBus    | ApplicationEventPublisher | goroutine + channel |
+| **适合** | AI/ML 岗位          | 后端/架构师               | 基础架构/高并发     |
 
 ---
-
-
 
 ## 开源协议
 
