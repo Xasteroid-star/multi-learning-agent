@@ -19,3 +19,115 @@ class StudentProfile(BaseModel):
     recent_activity: list[dict] = Field(default_factory=list)
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+import json
+import logging
+import aiosqlite
+
+logger = logging.getLogger(__name__)
+
+
+class ProfileStore:
+    """SQLite 持久化的学生画像存储。"""
+
+    def __init__(self, db_path: str = "data/student_profiles.db"):
+        self.db_path = db_path
+
+    async def init_db(self) -> None:
+        """创建表（如果不存在）。"""
+        import os
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS student_profiles (
+                    learner_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    grade TEXT NOT NULL DEFAULT '初三',
+                    learning_style TEXT NOT NULL DEFAULT 'mixed',
+                    preferred_pace TEXT NOT NULL DEFAULT 'normal',
+                    total_sessions INTEGER NOT NULL DEFAULT 0,
+                    total_photo_solves INTEGER NOT NULL DEFAULT 0,
+                    weak_topics TEXT NOT NULL DEFAULT '[]',
+                    strong_topics TEXT NOT NULL DEFAULT '[]',
+                    recent_activity TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            await db.commit()
+        logger.info("ProfileStore database initialized at %s", self.db_path)
+
+    async def save(self, profile: "StudentProfile") -> None:
+        """保存或更新学生画像。"""
+        weak_json = json.dumps(profile.weak_topics, ensure_ascii=False)
+        strong_json = json.dumps(profile.strong_topics, ensure_ascii=False)
+        activity_json = json.dumps(profile.recent_activity, ensure_ascii=False)
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO student_profiles
+                    (learner_id, name, grade, learning_style, preferred_pace,
+                     total_sessions, total_photo_solves,
+                     weak_topics, strong_topics, recent_activity,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(learner_id) DO UPDATE SET
+                    name = excluded.name,
+                    grade = excluded.grade,
+                    learning_style = excluded.learning_style,
+                    preferred_pace = excluded.preferred_pace,
+                    total_sessions = excluded.total_sessions,
+                    total_photo_solves = excluded.total_photo_solves,
+                    weak_topics = excluded.weak_topics,
+                    strong_topics = excluded.strong_topics,
+                    recent_activity = excluded.recent_activity,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    profile.learner_id, profile.name, profile.grade,
+                    profile.learning_style, profile.preferred_pace,
+                    profile.total_sessions, profile.total_photo_solves,
+                    weak_json, strong_json, activity_json,
+                    profile.created_at, profile.updated_at,
+                ),
+            )
+            await db.commit()
+        logger.info("Saved profile for learner=%s", profile.learner_id)
+
+    async def load(self, learner_id: str) -> "StudentProfile | None":
+        """加载学生画像。"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM student_profiles WHERE learner_id = ?", (learner_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return StudentProfile(
+            learner_id=row["learner_id"], name=row["name"], grade=row["grade"],
+            learning_style=row["learning_style"], preferred_pace=row["preferred_pace"],
+            total_sessions=row["total_sessions"], total_photo_solves=row["total_photo_solves"],
+            weak_topics=json.loads(row["weak_topics"]),
+            strong_topics=json.loads(row["strong_topics"]),
+            recent_activity=json.loads(row["recent_activity"]),
+            created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    async def refresh_from_bkt(
+        profile: "StudentProfile", learner_model: "LearnerModel",
+    ) -> "StudentProfile":
+        """从 BKT LearnerModel 刷新 weak_topics 和 strong_topics。不会自动保存。"""
+        weak = learner_model.get_weak_points(threshold=0.4, limit=10)
+        strong = learner_model.get_strong_points(threshold=0.85)
+        profile.weak_topics = [s.knowledge_id for s in weak]
+        profile.strong_topics = [s.knowledge_id for s in strong]
+        from datetime import datetime
+        profile.updated_at = datetime.now().isoformat()
+        return profile
