@@ -140,3 +140,43 @@ async def test_session_timeout_transitions(event_bus, photo_tutor):
     assert session.is_expired() is True
     photo_tutor.session_manager.cleanup_expired()
     assert photo_tutor.session_manager.get_session(session.session_id) is None
+
+
+def test_judge_reply_correct(photo_tutor):
+    """正确回复 → 'correct'"""
+    step_keywords = {"顶点公式", "x=-b/(2a)"}
+    result = photo_tutor._judge_reply(
+        student_reply="顶点公式是 x=-b/(2a)，代入得到顶点坐标 (-1, -4)",
+        step_keywords=step_keywords,
+    )
+    assert result == "correct"
+
+
+def test_judge_reply_partial(photo_tutor):
+    """部分正确 → 'partial'"""
+    step_keywords = {"配方法", "完全平方", "平方"}
+    result = photo_tutor._judge_reply(
+        student_reply="应该和平方有关...但我不确定怎么做",
+        step_keywords=step_keywords,
+    )
+    assert result == "partial"
+
+
+def test_judge_reply_wrong(photo_tutor):
+    """错误回复或无关联 → 'wrong'"""
+    step_keywords = {"顶点公式", "x=-b/(2a)"}
+    result = photo_tutor._judge_reply(
+        student_reply="我觉得答案是 5",
+        step_keywords=step_keywords,
+    )
+    assert result == "wrong"
+
+
+def test_judge_reply_empty(photo_tutor):
+    """空回复 → 'wrong'"""
+    step_keywords = {"顶点公式"}
+    result = photo_tutor._judge_reply(
+        student_reply="",
+        step_keywords=step_keywords,
+    )
+    assert result == "wrong"

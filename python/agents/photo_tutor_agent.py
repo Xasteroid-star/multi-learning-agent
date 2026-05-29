@@ -44,6 +44,28 @@ class PhotoTutorAgent(BaseAgent):
         if handler:
             await handler(event)
 
+    def _judge_reply(self, student_reply: str, step_keywords: set[str]) -> str:
+        """
+        评判学生回复质量。
+
+        简单规则版（生产环境中用 LLM 评判）：
+        - 包含 >= 2 个关键词 → correct
+        - 包含 1 个关键词 → partial
+        - 包含 0 个关键词 → wrong
+        """
+        if not student_reply.strip():
+            return "wrong"
+
+        reply_lower = student_reply.lower()
+        matched = sum(1 for kw in step_keywords if kw.lower() in reply_lower)
+
+        if matched >= 2:
+            return "correct"
+        elif matched >= 1:
+            return "partial"
+        else:
+            return "wrong"
+
     async def _on_session_started(self, event: Event) -> None:
         logger.info("[PhotoTutor] Session started for learner=%s", event.learner_id)
 
