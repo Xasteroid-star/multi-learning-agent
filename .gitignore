@@ -52,3 +52,5 @@ docker-compose.override.yml
 # Database
 *.db
 *.sqlite3
+.env.bak
+2026-05-29-photo-tutor-design.md
