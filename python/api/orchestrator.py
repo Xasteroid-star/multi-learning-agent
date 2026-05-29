@@ -185,10 +185,16 @@ class AgentOrchestrator:
                     for s in steps
                 )
                 session.add_system_message("reveal", reveal_text)
+                session.state = SessionState.SUMMARIZING
+                session.add_system_message(
+                    "summary",
+                    "以上是完整的解题过程。建议你把这道题加入错题本，下次复习时重新做一遍。",
+                )
+                session.state = SessionState.CLOSED
                 return {
                     "action": "reveal",
-                    "message": f"📝 完整解题过程：\n{reveal_text}",
-                    "session_state": session.state.value,
+                    "message": f"📝 完整解题过程：\n{reveal_text}\n\n建议加入错题本复习。",
+                    "session_state": "closed",
                 }
             elif session.hint_count >= 3:
                 # Already maxed out hints; let attempts accumulate without resetting

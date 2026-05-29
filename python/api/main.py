@@ -42,8 +42,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="多Agent智能教育系统",
     description=(
-        "5-Agent Mesh+事件驱动架构的个性化学习系统。\n\n"
+        "6-Agent Mesh+事件驱动架构的个性化学习系统。\n\n"
         "**Agent列表：**\n"
+        "- PhotoTutor Agent：拍照搜题 + 苏格拉底引导\n"
         "- Assessment Agent：知识点评估\n"
         "- Tutor Agent：苏格拉底式教学\n"
         "- Curriculum Agent：学习路径规划\n"
