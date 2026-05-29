@@ -16,6 +16,7 @@ from agents import (
     HintAgent,
     EngagementAgent,
 )
+from agents.photo_tutor_agent import PhotoTutorAgent
 
 
 class AgentOrchestrator:
@@ -47,6 +48,11 @@ class AgentOrchestrator:
         )
         self.engagement = EngagementAgent(
             name="EngagementAgent",
+            event_bus=self.event_bus,
+            learner_models=self.learner_models,
+        )
+        self.photo_tutor = PhotoTutorAgent(
+            name="PhotoTutorAgent",
             event_bus=self.event_bus,
             learner_models=self.learner_models,
         )
@@ -111,3 +117,96 @@ class AgentOrchestrator:
                 for s in model.get_strong_points()
             ],
         }
+
+    def create_photo_session(self, learner_id: str, problem_analysis) -> str:
+        """创建拍照引导会话，返回 session_id。"""
+        from core.photo_session import SessionState
+        session = self.photo_tutor.session_manager.create_session(
+            learner_id, problem_analysis
+        )
+        session.state = SessionState.ANALYZING
+        return session.session_id
+
+    def submit_photo_reply(self, session_id: str, learner_id: str, reply: str) -> dict | None:
+        """处理学生对引导问题的回复，返回下一步操作。"""
+        session = self.photo_tutor.session_manager.get_session(session_id)
+        if session is None:
+            return None
+
+        from core.photo_session import SessionState
+
+        session.add_student_message(reply)
+
+        current_step_idx = session.current_step
+        steps = session.solution_steps
+        if current_step_idx < len(steps):
+            step = steps[current_step_idx]
+            keywords = set(step.key_insight.split()) | {step.description}
+        else:
+            keywords = set()
+
+        judgement = self.photo_tutor._judge_reply(reply, keywords)
+
+        if judgement == "correct":
+            session.state = SessionState.PRAISING
+            session.complete_current_step()
+            if session.all_steps_completed():
+                session.state = SessionState.SUMMARIZING
+                session.add_system_message("summary", "🎉 太棒了！你已经完成了这道题的所有步骤。")
+                session.state = SessionState.CLOSED
+                return {
+                    "action": "summarize",
+                    "message": "🎉 太棒了！你已经完成了这道题的所有步骤。",
+                    "session_state": session.state.value,
+                }
+            else:
+                next_step = steps[session.current_step]
+                session.state = SessionState.GUIDING
+                session.add_system_message("guidance", next_step.socratic_prompt)
+                return {
+                    "action": "praise",
+                    "message": f"✅ 正确！{next_step.socratic_prompt}",
+                    "session_state": session.state.value,
+                }
+        elif judgement == "partial":
+            session.state = SessionState.FOLLOW_UP
+            session.add_system_message("follow_up", "你能说得更具体一些吗？试着用数学语言描述。")
+            return {
+                "action": "follow_up",
+                "message": "你能说得更具体一些吗？试着用数学语言描述。",
+                "session_state": session.state.value,
+            }
+        else:  # wrong
+            session.increment_attempts_since_last_hint()
+            if session.should_reveal():
+                session.state = SessionState.REVEALING
+                reveal_text = "\n".join(
+                    f"步骤 {s.step_number}: {s.description} — {s.key_insight}"
+                    for s in steps
+                )
+                session.add_system_message("reveal", reveal_text)
+                return {
+                    "action": "reveal",
+                    "message": f"📝 完整解题过程：\n{reveal_text}",
+                    "session_state": session.state.value,
+                }
+            else:
+                hint_level = min(session.hint_count + 1, 3)
+                session.record_hint(hint_level)
+                hint_text = self._generate_hint_text(hint_level, steps[current_step_idx].description)
+                session.add_system_message("hint", hint_text, hint_level=hint_level)
+                return {
+                    "action": "hint",
+                    "message": hint_text,
+                    "hint_level": hint_level,
+                    "session_state": session.state.value,
+                }
+
+    def _generate_hint_text(self, level: int, step_description: str) -> str:
+        """基于级别生成提示文本。"""
+        if level == 1:
+            return f"💡 提示 L1：试着回忆一下和「{step_description}」相关的基础概念。"
+        elif level == 2:
+            return f"📝 提示 L2：这道题的关键在于「{step_description}」，你先试试看第一步。"
+        else:
+            return f"📖 提示 L3：好的，让我给你更详细的指导。{step_description}。"
