@@ -190,8 +190,20 @@ class AgentOrchestrator:
                     "message": f"📝 完整解题过程：\n{reveal_text}",
                     "session_state": session.state.value,
                 }
+            elif session.hint_count >= 3:
+                # Already maxed out hints; let attempts accumulate without resetting
+                encore_msg = "再想想，你可以的！"
+                session.state = SessionState.HINTING
+                session._touch()
+                session.add_system_message("hint", encore_msg, hint_level=3)
+                return {
+                    "action": "hint",
+                    "message": encore_msg,
+                    "hint_level": 3,
+                    "session_state": session.state.value,
+                }
             else:
-                hint_level = min(session.hint_count + 1, 3)
+                hint_level = session.hint_count + 1
                 session.record_hint(hint_level)
                 hint_text = self._generate_hint_text(hint_level, steps[current_step_idx].description)
                 session.add_system_message("hint", hint_text, hint_level=hint_level)
