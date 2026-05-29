@@ -32,6 +32,11 @@ class PhotoSolveResponse(BaseModel):
     first_guidance: str
 
 
+class PhotoReplyRequest(BaseModel):
+    learner_id: str
+    reply: str
+
+
 @router.get("/health")
 async def health_check():
     return {"status": "ok", "service": "multi-agent-education", "agents": 5}
@@ -196,3 +201,19 @@ async def photo_solve(
         knowledge_points=analysis.knowledge_points,
         first_guidance=first_guidance,
     )
+
+
+@router.post("/photo-session/{session_id}/reply")
+async def photo_session_reply(
+    session_id: str,
+    req: PhotoReplyRequest,
+    request: Request,
+):
+    """学生对引导问题回复。"""
+    orch = request.app.state.orchestrator
+    result = orch.submit_photo_reply(session_id, req.learner_id, req.reply)
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="会话不存在或已结束")
+
+    return result

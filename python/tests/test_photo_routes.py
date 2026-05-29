@@ -78,3 +78,55 @@ async def test_photo_solve_missing_learner_id(test_app):
             files={"image": ("test.jpg", b"fake", "image/jpeg")},
         )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_photo_reply_returns_next_action(test_app):
+    """POST /api/v1/photo-session/{id}/reply 应返回下一步操作"""
+    mock_analysis = ProblemAnalysis(
+        problem_text="求 f(x)=x²+2x-3 的顶点坐标",
+        knowledge_points=["二次函数"],
+        difficulty=2,
+        solution_steps=[
+            SolutionStep(step_number=1, description="识别函数", key_insight="标准式 二次函数",
+                         socratic_prompt="这是什么函数？"),
+            SolutionStep(step_number=2, description="求顶点", key_insight="顶点公式 x=-b/(2a)",
+                         socratic_prompt="顶点公式是什么？"),
+        ],
+        relevance_to_weak=0.5,
+    )
+
+    orch = test_app.state.orchestrator
+    orch.submit_photo_reply.return_value = {
+        "action": "praise",
+        "message": "✅ 正确！顶点公式是什么？",
+        "session_state": "guiding",
+    }
+    session_id = orch.create_photo_session("u1", mock_analysis)
+    from core.photo_session import SessionState
+    orch.photo_tutor.session_manager.get_session(session_id).state = SessionState.GUIDING
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        response = await client.post(
+            f"/api/v1/photo-session/{session_id}/reply",
+            json={"learner_id": "u1", "reply": "这是二次函数，标准形式是 f(x)=ax²+bx+c"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["action"] in ("praise", "follow_up", "hint", "reveal", "summarize")
+    assert "message" in data
+    assert "session_state" in data
+
+
+@pytest.mark.asyncio
+async def test_photo_reply_nonexistent_session(test_app):
+    """回复不存在的会话返回 404"""
+    test_app.state.orchestrator.submit_photo_reply.return_value = None
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/photo-session/nonexistent/reply",
+            json={"learner_id": "u1", "reply": "hello"},
+        )
+
+    assert response.status_code == 404
