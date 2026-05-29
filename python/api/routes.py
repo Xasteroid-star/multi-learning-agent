@@ -37,6 +37,12 @@ class PhotoReplyRequest(BaseModel):
     reply: str
 
 
+class ProfileResponse(BaseModel):
+    learner_id: str
+    profile: dict | None = None
+    progress: dict | None = None
+
+
 @router.get("/health")
 async def health_check():
     return {"status": "ok", "service": "multi-agent-education", "agents": 5}
@@ -217,3 +223,61 @@ async def photo_session_reply(
         raise HTTPException(status_code=404, detail="会话不存在或已结束")
 
     return result
+
+
+@router.get("/photo-session/{session_id}")
+async def get_photo_session(
+    session_id: str,
+    request: Request,
+):
+    """获取拍照会话状态（断线重连用）。"""
+    orch = request.app.state.orchestrator
+    session = orch.photo_tutor.session_manager.get_session(session_id)
+
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    return {
+        "session_id": session.session_id,
+        "learner_id": session.learner_id,
+        "state": session.state.value,
+        "problem_text": session.problem_analysis.problem_text if session.problem_analysis else "",
+        "knowledge_points": session.problem_analysis.knowledge_points if session.problem_analysis else [],
+        "conversation_history": [
+            {"role": e.role, "text": e.text, "msg_type": e.msg_type, "hint_level": e.hint_level}
+            for e in session.conversation_history
+        ],
+        "current_step": session.current_step,
+        "total_steps": len(session.solution_steps),
+        "hint_count": session.hint_count,
+        "created_at": session.created_at,
+        "last_activity": session.last_activity,
+    }
+
+
+@router.get("/profile/{learner_id}", response_model=ProfileResponse)
+async def get_profile(
+    learner_id: str,
+    request: Request,
+):
+    """获取学生画像 + BKT 掌握概览。"""
+    orch = request.app.state.orchestrator
+
+    profile_data = None
+    try:
+        from core.student_profile import ProfileStore
+        store = ProfileStore()
+        await store.init_db()
+        saved = await store.load(learner_id)
+        if saved:
+            profile_data = saved.model_dump()
+    except Exception:
+        pass
+
+    progress = orch.get_learner_progress(learner_id)
+
+    return ProfileResponse(
+        learner_id=learner_id,
+        profile=profile_data,
+        progress=progress,
+    )

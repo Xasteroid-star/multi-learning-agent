@@ -12,6 +12,26 @@ def test_app():
     # 设置 mock orchestrator，避免 lifespan 初始化问题
     mock_orch = MagicMock()
     mock_orch.create_photo_session.return_value = "ps_test_001"
+    mock_orch.get_learner_progress.return_value = {
+        "knowledge_points": {},
+        "total_questions": 0,
+        "correct_rate": 0.0,
+    }
+
+    # Setup mock photo session for GET /photo-session/{id}
+    mock_session = MagicMock()
+    mock_session.session_id = "ps_test_001"
+    mock_session.learner_id = "u1"
+    mock_session.state = MagicMock(value="guiding")
+    mock_session.problem_analysis = None
+    mock_session.conversation_history = []
+    mock_session.current_step = 1
+    mock_session.solution_steps = []
+    mock_session.hint_count = 0
+    mock_session.created_at = "2024-01-01T00:00:00"
+    mock_session.last_activity = "2024-01-01T00:01:00"
+    mock_orch.photo_tutor.session_manager.get_session.return_value = mock_session
+
     app.state.orchestrator = mock_orch
     return app
 
@@ -130,3 +150,46 @@ async def test_photo_reply_nonexistent_session(test_app):
         )
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_photo_session(test_app):
+    """GET /api/v1/photo-session/{id} 应返回会话状态"""
+    mock_analysis = ProblemAnalysis(
+        problem_text="求顶点",
+        knowledge_points=["二次函数"],
+        difficulty=2,
+        solution_steps=[
+            SolutionStep(step_number=1, description="识别", key_insight="标准式", socratic_prompt="这是什么？"),
+        ],
+    )
+    orch = test_app.state.orchestrator
+    session_id = orch.create_photo_session("u1", mock_analysis)
+
+    # Configure the mock session that the endpoint will return
+    mock_session = orch.photo_tutor.session_manager.get_session(session_id)
+    mock_session.problem_analysis = mock_analysis
+    mock_session.solution_steps = mock_analysis.solution_steps
+    mock_session.current_step = 1
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        response = await client.get(f"/api/v1/photo-session/{session_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["session_id"] == session_id
+    assert data["problem_text"] == "求顶点"
+    assert "conversation_history" in data
+    assert "state" in data
+
+
+@pytest.mark.asyncio
+async def test_get_profile(test_app):
+    """GET /api/v1/profile/{learner_id} 应返回学生画像"""
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        response = await client.get("/api/v1/profile/u1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["learner_id"] == "u1"
+    assert "progress" in data
