@@ -72,6 +72,25 @@ async def websocket_endpoint(websocket: WebSocket, learner_id: str):
                     data.get("message", ""),
                     data.get("knowledge_id", "general"),
                 )
+            elif action == "photo_reply":
+                session_id = data.get("session_id", "")
+                reply = data.get("reply", "")
+                result = orch.submit_photo_reply(session_id, learner_id, reply)
+                if result is None:
+                    await manager.send_to_learner(
+                        learner_id,
+                        {"error": "Photo session not found", "session_id": session_id},
+                    )
+                else:
+                    await manager.send_to_learner(
+                        learner_id,
+                        {
+                            "event_type": "photo.action",
+                            "source": "PhotoTutorAgent",
+                            "data": result,
+                        },
+                    )
+                continue
             else:
                 await manager.send_to_learner(learner_id, {"error": f"Unknown action: {action}"})
                 continue
