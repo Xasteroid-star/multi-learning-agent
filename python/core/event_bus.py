@@ -54,6 +54,16 @@ class EventType(str, Enum):
     ENCOURAGEMENT = "engagement.encouragement"
     PACE_ADJUSTMENT = "engagement.pace_adjustment"
 
+    # Photo Tutor Agent 事件
+    PHOTO_SESSION_STARTED = "photo.session_started"
+    PROBLEM_RECOGNIZED = "photo.problem_recognized"
+    GUIDANCE_QUESTION = "photo.guidance_question"
+    STUDENT_PHOTO_REPLY = "photo.student_reply"
+    REPLY_JUDGED = "photo.reply_judged"
+    STEP_COMPLETED = "photo.step_completed"
+    SOLUTION_REVEALED = "photo.solution_revealed"
+    PHOTO_SESSION_ENDED = "photo.session_ended"
+
 
 class Event(BaseModel):
     """事件数据模型。"""
