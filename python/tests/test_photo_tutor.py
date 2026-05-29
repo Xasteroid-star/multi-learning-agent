@@ -3,6 +3,8 @@
 import pytest
 from core.event_bus import EventBus, Event, EventType
 from agents.photo_tutor_agent import PhotoTutorAgent
+from core.photo_session import SessionState
+from core.problem_analyzer import ProblemAnalysis, SolutionStep
 
 
 @pytest.fixture
@@ -51,3 +53,90 @@ async def test_photo_tutor_handles_session_started(event_bus, photo_tutor):
     )
     await photo_tutor.handle_event(event)
     # 不抛异常即为通过
+
+
+def make_analysis():
+    return ProblemAnalysis(
+        problem_text="求 f(x)=x²+2x-3 的顶点坐标",
+        knowledge_points=["二次函数"], difficulty=2,
+        solution_steps=[
+            SolutionStep(step_number=1, description="识别函数", key_insight="标准式", socratic_prompt="这是什么函数？"),
+            SolutionStep(step_number=2, description="求顶点", key_insight="顶点公式", socratic_prompt="顶点公式是什么？"),
+        ],
+        relevance_to_weak=0.5,
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_state_machine_happy_path(event_bus, photo_tutor):
+    """完整快乐路径：IDLE→GUIDING→PRAISING→GUIDING→SUMMARIZING→CLOSED"""
+    session = photo_tutor.session_manager.create_session("u1", make_analysis())
+
+    session.state = SessionState.GUIDING
+    first_question = session.solution_steps[0].socratic_prompt
+    session.add_system_message("guidance", first_question)
+    assert session.state == SessionState.GUIDING
+    assert len(session.conversation_history) == 1
+
+    session.add_student_message("这是二次函数，标准形式是 f(x)=ax²+bx+c")
+    session.state = SessionState.PRAISING
+    session.complete_current_step()
+    assert session.current_step == 1
+    assert session.state == SessionState.PRAISING
+
+    session.state = SessionState.GUIDING
+    next_question = session.solution_steps[1].socratic_prompt
+    session.add_system_message("guidance", next_question)
+
+    session.add_student_message("顶点公式是 x=-b/(2a), y=f(-b/(2a))")
+    session.state = SessionState.PRAISING
+    session.complete_current_step()
+    assert session.all_steps_completed() is True
+
+    session.state = SessionState.SUMMARIZING
+    session.add_system_message("summary", "总结：你成功求出了顶点坐标")
+    session.state = SessionState.CLOSED
+
+    assert session.state == SessionState.CLOSED
+    assert len(session.conversation_history) == 5
+
+
+@pytest.mark.asyncio
+async def test_state_machine_guiding_to_follow_up(event_bus, photo_tutor):
+    """回复模糊 → FOLLOW_UP"""
+    session = photo_tutor.session_manager.create_session("u1", make_analysis())
+    session.state = SessionState.GUIDING
+    session.add_system_message("guidance", session.solution_steps[0].socratic_prompt)
+    session.add_student_message("函数...")
+    session.state = SessionState.FOLLOW_UP
+    session.add_system_message("follow_up", "你能说得更具体一些吗？")
+
+    assert session.state == SessionState.FOLLOW_UP
+    assert session.conversation_history[-1].msg_type == "follow_up"
+
+
+@pytest.mark.asyncio
+async def test_state_machine_guiding_to_hinting(event_bus, photo_tutor):
+    """连续失败 → HINTING"""
+    session = photo_tutor.session_manager.create_session("u1", make_analysis())
+    session.state = SessionState.GUIDING
+    session.add_student_message("不知道")
+    session.increment_attempts_since_last_hint()
+    session.add_student_message("还是不知道")
+    session.increment_attempts_since_last_hint()
+    session.record_hint(1)
+    assert session.state == SessionState.HINTING
+    assert session.hint_count == 1
+    assert session.attempts_since_last_hint == 0
+
+
+@pytest.mark.asyncio
+async def test_session_timeout_transitions(event_bus, photo_tutor):
+    """会话超时自动 CLOSED"""
+    from datetime import datetime, timedelta
+    session = photo_tutor.session_manager.create_session("u1", make_analysis())
+    session.state = SessionState.GUIDING
+    session.last_activity = (datetime.now() - timedelta(minutes=31)).isoformat()
+    assert session.is_expired() is True
+    photo_tutor.session_manager.cleanup_expired()
+    assert photo_tutor.session_manager.get_session(session.session_id) is None
