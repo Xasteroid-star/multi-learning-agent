@@ -140,7 +140,7 @@
 </div>
 
 <script>
-const API = 'http://localhost:8000/api/v1';
+const API = window.location.origin + '/api/v1';
 let sid = null, curStep = 0, totalSteps = 0, file = null;
 
 function pickFile(e) {

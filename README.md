@@ -185,22 +185,7 @@ P(L_new) = P(L|obs) + (1 - P(L|obs)) × P(T)
 
 ---
 
-## 面试准备
 
-详细内容见 [docs/interview-guide.md](docs/interview-guide.md)
-
-**简历写法：**
-> 设计 6-Agent Mesh+事件驱动架构的教育系统。PhotoTutorAgent 管理拍照→OCR→苏格拉底引导完整流程；AssessmentAgent 用 BKT 追踪 200+知识点；CurriculumAgent 用 SM-2 动态排期；Agent 间通过 EventBus 异步通信，新增 Agent 无需修改现有代码。
-
-**STAR 讲述：**
-| 维度 | 内容 |
-|---|---|
-| **S** | 传统搜题工具直接给答案，学生不思考 |
-| **T** | 设计拍照搜题 + 引导式学习系统 |
-| **A** | 6-Agent Mesh + Vision LLM OCR + BKT + SM-2 + 3级提示 |
-| **R** | 拍照→引导→掌握度追踪→复习排期，全流程自动化 |
-
----
 
 ## 开源协议
 

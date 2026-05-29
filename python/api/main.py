@@ -11,10 +11,12 @@ FastAPI 应用入口。
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from api.routes import router
 from api.websocket import ws_router
@@ -65,6 +67,19 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(ws_router)
+
+# 前端页面
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend"
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    """返回前端页面。"""
+    demo_path = FRONTEND_DIR / "demo.html"
+    if demo_path.exists():
+        return HTMLResponse(demo_path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>demo.html not found</h1>", status_code=404)
+
 
 if __name__ == "__main__":
     uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
