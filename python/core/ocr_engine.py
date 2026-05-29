@@ -1,6 +1,9 @@
 # core/ocr_engine.py
 """OCR 引擎 -- 使用 Vision LLM 从图片中识别数学题目。"""
 
+import base64
+import logging
+
 from pydantic import BaseModel
 
 
@@ -11,10 +14,6 @@ class OCRResult(BaseModel):
     has_math_formula: bool
     confidence: float
     raw_llm_response: str = ""
-
-
-import base64
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,8 @@ async def _call_vision_llm(image_bytes: bytes) -> OCRResult:
     生产环境中调用 MiniMax/OpenAI 多模态接口。
     当前用 mock 实现以供测试覆盖。
     """
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    # TODO: 生产环境使用 image_b64 调用 LLM API
+    # image_b64 = base64.b64encode(image_bytes).decode("utf-8")
     logger.info("Calling vision LLM with image size=%d bytes", len(image_bytes))
 
     raise NotImplementedError(

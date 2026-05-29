@@ -1,6 +1,7 @@
 # tests/test_ocr_engine.py
 import pytest
-from core.ocr_engine import OCRResult
+from unittest.mock import AsyncMock, patch
+from core.ocr_engine import OCRResult, recognize_math_from_photo
 
 
 def test_ocr_result_creation():
@@ -28,10 +29,6 @@ def test_ocr_result_defaults():
     assert result.has_math_formula is False
     assert result.confidence == 0.0
     assert result.raw_llm_response == ""
-
-
-from unittest.mock import AsyncMock, patch
-from core.ocr_engine import recognize_math_from_photo
 
 
 @pytest.mark.asyncio
