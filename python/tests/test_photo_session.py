@@ -1,7 +1,7 @@
 """Photo Session 测试。"""
 
 import pytest
-from core.photo_session import PhotoSession, SessionState, ConversationEntry
+from core.photo_session import PhotoSession, SessionState, ConversationEntry, PhotoSessionManager
 from core.problem_analyzer import SolutionStep, ProblemAnalysis
 
 
@@ -99,3 +99,69 @@ def test_photo_session_completed_steps():
     session.complete_current_step()
     assert session.current_step == 2
     assert session.all_steps_completed() is True
+
+
+@pytest.mark.asyncio
+async def test_session_manager_create_and_get():
+    """创建后可获取会话"""
+    mgr = PhotoSessionManager()
+    session = mgr.create_session("u1", make_sample_analysis())
+    assert session.session_id.startswith("ps_")
+    assert session.learner_id == "u1"
+    retrieved = mgr.get_session(session.session_id)
+    assert retrieved is not None
+    assert retrieved.session_id == session.session_id
+
+
+@pytest.mark.asyncio
+async def test_session_manager_get_nonexistent():
+    """获取不存在的会话返回 None"""
+    mgr = PhotoSessionManager()
+    assert mgr.get_session("nonexistent") is None
+
+
+@pytest.mark.asyncio
+async def test_session_manager_max_concurrent():
+    """每 learner 最多 3 个活跃会话"""
+    mgr = PhotoSessionManager()
+    s1 = mgr.create_session("u1", make_sample_analysis())
+    s2 = mgr.create_session("u1", make_sample_analysis())
+    s3 = mgr.create_session("u1", make_sample_analysis())
+    with pytest.raises(ValueError, match="最多.*3.*活跃"):
+        mgr.create_session("u1", make_sample_analysis())
+    mgr.close_session(s1.session_id)
+    s4 = mgr.create_session("u1", make_sample_analysis())
+    assert s4.session_id != s1.session_id
+
+
+@pytest.mark.asyncio
+async def test_session_manager_close_session():
+    """关闭后 get 返回 None"""
+    mgr = PhotoSessionManager()
+    session = mgr.create_session("u1", make_sample_analysis())
+    mgr.close_session(session.session_id)
+    assert mgr.get_session(session.session_id) is None
+
+
+@pytest.mark.asyncio
+async def test_session_manager_cleanup_expired():
+    """过期会话（>30 min）应被清理"""
+    from datetime import datetime, timedelta
+    mgr = PhotoSessionManager()
+    session = mgr.create_session("u1", make_sample_analysis())
+    session.last_activity = (datetime.now() - timedelta(minutes=31)).isoformat()
+    mgr.cleanup_expired()
+    assert mgr.get_session(session.session_id) is None
+
+
+@pytest.mark.asyncio
+async def test_session_manager_count_active():
+    """活跃会话计数正确"""
+    mgr = PhotoSessionManager()
+    assert mgr.count_active("u1") == 0
+    s1 = mgr.create_session("u1", make_sample_analysis())
+    assert mgr.count_active("u1") == 1
+    s2 = mgr.create_session("u1", make_sample_analysis())
+    assert mgr.count_active("u1") == 2
+    mgr.close_session(s1.session_id)
+    assert mgr.count_active("u1") == 1
