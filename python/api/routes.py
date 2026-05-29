@@ -1,6 +1,6 @@
 """REST API 路由。"""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 router = APIRouter(tags=["education"])
@@ -23,6 +23,13 @@ class SendMessageRequest(BaseModel):
     learner_id: str
     message: str
     knowledge_id: str = "general"
+
+
+class PhotoSolveResponse(BaseModel):
+    session_id: str
+    problem_text: str
+    knowledge_points: list[str]
+    first_guidance: str
 
 
 @router.get("/health")
@@ -102,3 +109,90 @@ async def get_knowledge_graph(request: Request):
         ],
         "learning_order": graph.topological_sort(),
     }
+
+
+@router.post("/photo-solve", response_model=PhotoSolveResponse)
+async def photo_solve(
+    image: UploadFile = File(...),
+    learner_id: str = Form(...),
+    request: Request = None,
+):
+    """拍照搜题：上传数学题图片，启动个性化引导会话。"""
+    # 校验文件类型
+    if image.content_type not in ("image/jpeg", "image/png", "image/jpg"):
+        raise HTTPException(status_code=400, detail="仅支持 JPEG/PNG 图片")
+
+    # 读取图片
+    image_bytes = await image.read()
+    if len(image_bytes) > 10 * 1024 * 1024:  # 10MB
+        raise HTTPException(status_code=413, detail="图片大小不能超过 10MB")
+
+    # OCR 识别
+    from core.ocr_engine import recognize_math_from_photo
+    try:
+        ocr_result = await recognize_math_from_photo(image_bytes)
+    except NotImplementedError:
+        from core.ocr_engine import OCRResult
+        ocr_result = OCRResult(
+            problem_text="[请配置 Vision LLM API Key 以启用 OCR 识别]",
+            has_math_formula=True,
+            confidence=0.0,
+        )
+
+    if 0 < ocr_result.confidence < 0.5:
+        raise HTTPException(
+            status_code=422,
+            detail="图片不太清楚，识别置信度低，请换个角度重拍",
+        )
+
+    if "NOT_MATH" in ocr_result.problem_text:
+        raise HTTPException(
+            status_code=422,
+            detail="看起来不是数学题目，请上传数学题图片",
+        )
+
+    # 加载学生画像
+    orch = request.app.state.orchestrator
+    profile = {"learner_id": learner_id, "grade": "初三", "weak_topics": []}
+    try:
+        from core.student_profile import ProfileStore
+        store = ProfileStore()
+        await store.init_db()
+        saved = await store.load(learner_id)
+        if saved:
+            profile = saved.model_dump()
+    except Exception:
+        pass
+
+    # 分析题目
+    from core.problem_analyzer import analyze_problem, ProblemAnalysis, SolutionStep
+    try:
+        analysis = await analyze_problem(ocr_result.problem_text, profile)
+    except NotImplementedError:
+        analysis = ProblemAnalysis(
+            problem_text=ocr_result.problem_text,
+            knowledge_points=["未识别"],
+            difficulty=3,
+            solution_steps=[
+                SolutionStep(
+                    step_number=1,
+                    description="分析题目",
+                    key_insight="识别已知条件和求解目标",
+                    socratic_prompt="你能告诉我这道题的已知条件是什么，要求什么吗？",
+                ),
+            ],
+            relevance_to_weak=0.0,
+        )
+
+    # 创建拍照会话
+    session_id = orch.create_photo_session(learner_id, analysis)
+
+    first_step = analysis.solution_steps[0] if analysis.solution_steps else None
+    first_guidance = first_step.socratic_prompt if first_step else "让我们开始吧！"
+
+    return PhotoSolveResponse(
+        session_id=session_id,
+        problem_text=analysis.problem_text,
+        knowledge_points=analysis.knowledge_points,
+        first_guidance=first_guidance,
+    )
