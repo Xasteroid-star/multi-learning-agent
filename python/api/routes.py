@@ -45,7 +45,7 @@ class ProfileResponse(BaseModel):
 
 @router.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "multi-agent-education", "agents": 5}
+    return {"status": "ok", "service": "multi-agent-education", "agents": 6}
 
 
 @router.post("/submit")

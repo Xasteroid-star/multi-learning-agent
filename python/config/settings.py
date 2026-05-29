@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     # LLM
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
+    openai_base_url: str = "https://api.openai.com/v1"
     minimax_api_key: str = ""
     minimax_model: str = "MiniMax-M2.7"
 
