@@ -48,23 +48,47 @@ class PhotoTutorAgent(BaseAgent):
         """
         评判学生回复质量。
 
-        简单规则版（生产环境中用 LLM 评判）：
-        - 包含 >= 2 个关键词 → correct
-        - 包含 1 个关键词 → partial
-        - 包含 0 个关键词 → wrong
+        LLM 评判（带降级）：
+        - 用 LLM 理解回复是否基本正确
+        - LLM 不可用时降级到关键词匹配
         """
         if not student_reply.strip():
             return "wrong"
 
+        try:
+            from openai import OpenAI
+            from config.settings import settings
+
+            if settings.openai_api_key:
+                client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
+                resp = client.chat.completions.create(
+                    model=settings.openai_model,
+                    messages=[{
+                        "role": "system",
+                        "content": "你是数学老师。判断学生对当前步骤的回答是否正确、部分正确还是错误。只输出一个词: correct, partial, wrong。partial表示思路对但不够完整或不够具体。"
+                    }, {
+                        "role": "user",
+                        "content": f"当前步骤关键思路：{step_keywords}\n学生回答：{student_reply}\n\n评判（correct/partial/wrong）："
+                    }],
+                    max_tokens=5, temperature=0, timeout=8.0,
+                )
+                raw = resp.choices[0].message.content.strip().lower()
+                if "correct" in raw:
+                    return "correct"
+                elif "partial" in raw:
+                    return "partial"
+                return "wrong"
+        except Exception:
+            pass
+
+        # LLM 不可用时降级到关键词匹配
         reply_lower = student_reply.lower()
         matched = sum(1 for kw in step_keywords if kw.lower() in reply_lower)
-
         if matched >= 2:
             return "correct"
         elif matched >= 1:
             return "partial"
-        else:
-            return "wrong"
+        return "wrong"
 
     async def _on_session_started(self, event: Event) -> None:
         logger.info("[PhotoTutor] Session started for learner=%s", event.learner_id)

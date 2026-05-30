@@ -129,6 +129,7 @@ async def _call_analysis_llm(
                 {"role": "user", "content": prompt},
             ],
             temperature=0.3,
+            timeout=60.0,
         )
         raw = response.choices[0].message.content or ""
         logger.info("Analysis LLM response: %s", raw[:300])

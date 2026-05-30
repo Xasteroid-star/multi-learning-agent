@@ -78,6 +78,7 @@ async def _call_vision_llm(image_bytes: bytes) -> OCRResult:
                 ],
             }],
             temperature=0.3,
+            timeout=30.0,
         )
         raw = response.choices[0].message.content or ""
         logger.info("Vision LLM response: %s", raw[:200])

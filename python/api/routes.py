@@ -1,5 +1,7 @@
 """REST API 路由。"""
 
+from __future__ import annotations
+
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
@@ -46,6 +48,78 @@ class ProfileResponse(BaseModel):
 @router.get("/health")
 async def health_check():
     return {"status": "ok", "service": "multi-agent-education", "agents": 6}
+
+
+@router.get("/llm-test")
+async def llm_test():
+    """测试 LLM API 连接。"""
+    from openai import OpenAI
+    from config.settings import settings
+    import time
+
+    result = {"providers": []}
+
+    # 测试 OpenAI/DeepSeek
+    if settings.openai_api_key:
+        t0 = time.time()
+        try:
+            client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
+            resp = client.chat.completions.create(
+                model=settings.openai_model,
+                messages=[{"role": "user", "content": "回复: OK"}],
+                max_tokens=10, timeout=10.0,
+            )
+            elapsed = time.time() - t0
+            result["providers"].append({
+                "name": "openai",
+                "base_url": settings.openai_base_url,
+                "model": settings.openai_model,
+                "status": "ok",
+                "response": resp.choices[0].message.content.strip(),
+                "latency_sec": round(elapsed, 2),
+            })
+        except Exception as e:
+            result["providers"].append({
+                "name": "openai",
+                "base_url": settings.openai_base_url,
+                "model": settings.openai_model,
+                "status": "fail",
+                "error": str(e)[:200],
+                "latency_sec": round(time.time() - t0, 2),
+            })
+    else:
+        result["providers"].append({"name": "openai", "status": "not_configured"})
+
+    # 测试 MiniMax
+    if settings.minimax_api_key:
+        t0 = time.time()
+        try:
+            client = OpenAI(api_key=settings.minimax_api_key, base_url="https://api.minimaxi.com/v1")
+            resp = client.chat.completions.create(
+                model=settings.minimax_model,
+                messages=[{"role": "user", "content": "回复: OK"}],
+                max_tokens=10, timeout=10.0,
+            )
+            elapsed = time.time() - t0
+            result["providers"].append({
+                "name": "minimax",
+                "model": settings.minimax_model,
+                "status": "ok",
+                "response": resp.choices[0].message.content.strip(),
+                "latency_sec": round(elapsed, 2),
+            })
+        except Exception as e:
+            result["providers"].append({
+                "name": "minimax",
+                "model": settings.minimax_model,
+                "status": "fail",
+                "error": str(e)[:200],
+                "latency_sec": round(time.time() - t0, 2),
+            })
+    else:
+        result["providers"].append({"name": "minimax", "status": "not_configured"})
+
+    return result
 
 
 @router.post("/submit")
@@ -124,42 +198,54 @@ async def get_knowledge_graph(request: Request):
 
 @router.post("/photo-solve", response_model=PhotoSolveResponse)
 async def photo_solve(
-    image: UploadFile = File(...),
+    image: UploadFile | None = File(None),
     learner_id: str = Form(...),
+    problem_text: str = Form(""),
     request: Request = None,
 ):
-    """拍照搜题：上传数学题图片，启动个性化引导会话。"""
-    # 校验文件类型
-    if image.content_type not in ("image/jpeg", "image/png", "image/jpg"):
-        raise HTTPException(status_code=400, detail="仅支持 JPEG/PNG 图片")
+    """拍照搜题：上传数学题图片或直接输入文字，启动个性化引导会话。"""
+    ocr_text = problem_text.strip()
 
-    # 读取图片
-    image_bytes = await image.read()
-    if len(image_bytes) > 10 * 1024 * 1024:  # 10MB
-        raise HTTPException(status_code=413, detail="图片大小不能超过 10MB")
+    # 如果有图片，尝试 OCR
+    if image is not None and image.filename:
+        if image.content_type not in ("image/jpeg", "image/png", "image/jpg"):
+            raise HTTPException(status_code=400, detail="仅支持 JPEG/PNG 图片")
 
-    # OCR 识别
-    from core.ocr_engine import recognize_math_from_photo
-    try:
-        ocr_result = await recognize_math_from_photo(image_bytes)
-    except NotImplementedError:
-        from core.ocr_engine import OCRResult
-        ocr_result = OCRResult(
-            problem_text="[请配置 Vision LLM API Key 以启用 OCR 识别]",
-            has_math_formula=True,
-            confidence=0.0,
-        )
+        image_bytes = await image.read()
+        if len(image_bytes) > 10 * 1024 * 1024:  # 10MB
+            raise HTTPException(status_code=413, detail="图片大小不能超过 10MB")
 
-    if 0 < ocr_result.confidence < 0.5:
+        from core.ocr_engine import recognize_math_from_photo
+        try:
+            ocr_result = await recognize_math_from_photo(image_bytes)
+
+            if 0 < ocr_result.confidence < 0.5:
+                raise HTTPException(
+                    status_code=422,
+                    detail="图片不太清楚，识别置信度低，请换个角度重拍",
+                )
+
+            if "NOT_MATH" in ocr_result.problem_text:
+                raise HTTPException(
+                    status_code=422,
+                    detail="看起来不是数学题目，请上传数学题图片",
+                )
+
+            if not ocr_text and "[请设置" not in ocr_result.problem_text and "OCR 识别失败" not in ocr_result.problem_text:
+                ocr_text = ocr_result.problem_text
+        except HTTPException:
+            raise
+        except Exception:
+            if not ocr_text:
+                raise HTTPException(
+                    status_code=422,
+                    detail="OCR 识别失败，请在下方直接输入题目文字",
+                )
+
+    if not ocr_text:
         raise HTTPException(
-            status_code=422,
-            detail="图片不太清楚，识别置信度低，请换个角度重拍",
-        )
-
-    if "NOT_MATH" in ocr_result.problem_text:
-        raise HTTPException(
-            status_code=422,
-            detail="看起来不是数学题目，请上传数学题图片",
+            status_code=400,
+            detail="请上传图片或直接输入题目文字",
         )
 
     # 加载学生画像
@@ -178,10 +264,10 @@ async def photo_solve(
     # 分析题目
     from core.problem_analyzer import analyze_problem, ProblemAnalysis, SolutionStep
     try:
-        analysis = await analyze_problem(ocr_result.problem_text, profile)
+        analysis = await analyze_problem(ocr_text, profile)
     except NotImplementedError:
         analysis = ProblemAnalysis(
-            problem_text=ocr_result.problem_text,
+            problem_text=ocr_text,
             knowledge_points=["未识别"],
             difficulty=3,
             solution_steps=[
