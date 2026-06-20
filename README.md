@@ -3,10 +3,8 @@
 > 拍照上传数学题 → AI 不直接给答案，用苏格拉底式提问一步步引导你思考
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](python/)
-[![Java](https://img.shields.io/badge/Java-21+-red.svg)](java/)
-[![Go](https://img.shields.io/badge/Go-1.22+-cyan.svg)](golang/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-65%20passed-brightgreen.svg)](python/tests/)
+[![Tests](https://img.shields.io/badge/tests-32%20passed-brightgreen.svg)](python/tests/)
 
 ---
 
@@ -61,7 +59,7 @@
 
 ## 5 分钟跑起来
 
-### Python 版（推荐）
+### 启动后端
 
 ```bash
 cd multi-agent-education/python
@@ -127,8 +125,6 @@ multi-agent-education/
 │   │   ├── routes.py               # REST API (8 端点)
 │   │   └── websocket.py            # WebSocket
 │   └── tests/                      # 65 个测试
-├── java/                           # Java 版 (Spring Boot)
-├── golang/                         # Go 版
 ├── frontend/
 │   └── demo.html                   # ★ 独立前端 (无需构建)
 └── docs/
@@ -176,14 +172,6 @@ P(L_new) = P(L|obs) + (1 - P(L|obs)) × P(T)
 四个参数：P(L₀)=0.1 (初始掌握), P(T)=0.15 (学习转移), P(G)=0.2 (猜测), P(S)=0.1 (失误)
 
 ---
-
-## 三种语言实现
-
-|          | Python              | Java                      | Go                  |
-| -------- | ------------------- | ------------------------- | ------------------- |
-| **框架** | FastAPI + LangGraph | Spring Boot + Spring AI   | net/http            |
-| **事件** | asyncio EventBus    | ApplicationEventPublisher | goroutine + channel |
-| **适合** | AI/ML 岗位          | 后端/架构师               | 基础架构/高并发     |
 
 ---
 

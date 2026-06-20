@@ -8,11 +8,13 @@ SM-2是SuperMemo算法的第二版，也是Anki等主流记忆软件的核心算
 - 核心公式：I(n) = I(n-1) × EF，EF由回答质量决定
 - EF范围 [1.3, 2.5]，初始2.5
 - q < 3 时重置间隔从头复习
-- 与Leitner系统的区别：SM-2连续调整，Leitner离散分级
 """
+
+from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +29,7 @@ class ReviewItem(BaseModel):
     interval_days: float = 0  # 当前复习间隔（天）
     repetition: int = 0  # 成功复习次数
     next_review: datetime = Field(default_factory=datetime.now)
-    last_review: datetime | None = None
+    last_review: Optional[datetime] = None
     total_reviews: int = 0
 
     @property

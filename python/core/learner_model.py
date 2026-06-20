@@ -10,10 +10,12 @@
 - 与 IRT（项目反应理论）的区别：BKT追踪动态变化，IRT是静态模型
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -39,7 +41,7 @@ class KnowledgeState(BaseModel):
     beta: float = 9.0  # Beta分布参数β（失败次数+1）
     attempts: int = 0
     correct_count: int = 0
-    last_attempt: datetime | None = None
+    last_attempt: Optional[datetime] = None
     streak: int = 0  # 连续正确次数
 
     @property

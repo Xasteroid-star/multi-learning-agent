@@ -8,11 +8,12 @@ Tutor Agent（教学Agent）-- 苏格拉底式提问教学。
 
 面试要点：
 - 苏格拉底式教学：不给答案，通过反问让学生自己发现
-- Prompt Engineering：针对不同mastery等级设计不同的Prompt模板
-- 引导率85%目标：大部分情况只给暗示和引导
 """
 
+from __future__ import annotations
+
 import logging
+from typing import Optional
 
 from .base_agent import BaseAgent
 from core.event_bus import Event, EventType
@@ -127,7 +128,7 @@ class TutorAgent(BaseAgent):
         knowledge_id: str,
         level: str,
         mastery: float,
-        is_correct: bool | None,
+        is_correct: Optional[bool],
         question: str,
     ) -> str:
         """

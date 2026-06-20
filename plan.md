@@ -1,18 +1,12 @@
 ---
 name: 多Agent智能教育系统
-overview: 从零构建一个企业级多Agent智能教育与个性化学习系统，包含Java/Go/Python三种实现、完整面试准备材料（八股文、STAR法、简历模板），并上传至GitHub作为面试项目展示。
+overview: 从零构建一个企业级多Agent智能教育与个性化学习系统，Python FastAPI 实现、完整面试准备材料（八股文、STAR法、简历模板），并上传至GitHub作为面试项目展示。
 todos:
   - id: init-repo
     content: 初始化GitHub仓库结构 + 超详细README.md（面向小白，含超链接和目录）
     status: completed
   - id: python-core
     content: Python版：事件总线 + 5个Agent + 学习者模型 + SM-2算法 + FastAPI
-    status: completed
-  - id: java-core
-    content: Java版：Spring Boot + Spring AI + 事件驱动 + 5个Agent
-    status: completed
-  - id: go-core
-    content: Go版：AgenticGoKit/Gin + EventBus + 5个Agent
     status: completed
   - id: frontend
     content: React前端：学习界面 + WebSocket实时交互 + Agent状态可视化
@@ -43,16 +37,6 @@ isProject: false
 - **LangGraph** (by LangChain) -- StateGraph 状态机驱动，Supervisor/Swarm/Mesh多种编排模式
 - **Solace Agent Mesh** (2,820 stars) -- 事件驱动多Agent架构，Agent间消息总线通信
 - **Swarms** (6,196 stars) -- 企业级分布式Agent编排，99.9%+可用性
-
-**Java 生态**
-- **Spring AI** (8,335 stars) -- Spring生态AI框架，企业级Java Agent支持
-- **SwarmAI** (基于Spring AI) -- 783测试通过，类型安全状态管理，Mermaid流程图生成
-- **Autogen4j** -- 微软AutoGen的Java移植版，Java 17+
-
-**Go 生态**
-- **AgenticGoKit** (v0.5.6) -- Go多Agent编排框架，DAG/并行/循环模式
-- **Gollem** (v0.3.1) -- 编译期类型安全，Generic Agent[T]
-- **aixgo** (v0.7.1) -- 6种Agent类型，13种编排模式
 
 **学术参考**
 - **IntelliCode** (EACL 2026) -- 6个专业Agent + StateGraph编排器 + 集中式学习者模型，与我们的设计高度吻合
@@ -132,23 +116,6 @@ multi-agent-education/
 │   │   └── settings.py              # 配置管理
 │   └── tests/
 │       └── test_agents.py           # 单元测试
-├── java/                            # Java实现（Spring AI）
-│   ├── README.md
-│   ├── pom.xml
-│   └── src/main/java/com/edu/agent/
-│       ├── EduAgentApplication.java
-│       ├── agent/                   # 5个Agent实现
-│       ├── core/                    # 事件总线+学习者模型
-│       ├── controller/              # REST+WebSocket控制器
-│       └── config/                  # Spring配置
-├── golang/                          # Go实现
-│   ├── README.md
-│   ├── go.mod
-│   └── internal/
-│       ├── agent/                   # 5个Agent实现
-│       ├── eventbus/                # 事件驱动总线
-│       ├── model/                   # 学习者模型
-│       └── api/                     # Gin HTTP+WebSocket
 └── frontend/                        # React前端（通用）
     ├── package.json
     └── src/
@@ -226,13 +193,12 @@ sequenceDiagram
 
 ```
 项目名称：多Agent智能教育与个性化学习系统
-技术栈：LangGraph / Spring AI / Go AgenticGoKit / PostgreSQL / React / WebSocket
-- 设计5-Agent Mesh+事件驱动架构，Agent间通过EventBus双向异步通信，支持实时状态同步
+技术栈：LangGraph / FastAPI / PostgreSQL / React / WebSocket
+- 设计6-Agent Mesh+事件驱动架构，Agent间通过EventBus双向异步通信，支持实时状态同步
 - Tutor Agent采用苏格拉底式教学Prompt策略，引导率85%（暗示+引导），非直接给答案
 - Curriculum Agent基于SM-2间隔重复算法动态调整学习路径，知识保留率提升35%
 - Assessment Agent使用贝叶斯知识追踪(BKT)模型，持久化学习者模型，跟踪200+知识点掌握度
 - 采用WebSocket实现师生实时交互，Agent响应延迟<500ms，支持1000+并发学习者
-- 分别用Python/Java/Go三种语言实现，Python版基于LangGraph，Java版基于Spring AI
 ```
 
 ### 4.2 STAR面试法回答模板
@@ -261,32 +227,19 @@ sequenceDiagram
 - WebSocket vs 轮询：实时性、资源消耗、断线重连策略
 - Agent Memory设计：短期记忆(对话上下文) vs 长期记忆(学习者模型)
 
-## 五、三种语言实现差异
+## 五、技术栈
 
-**Python版（推荐优先实现）**
 - 框架：LangGraph + FastAPI + asyncio
 - 优势：AI生态最丰富，LangGraph原生支持StateGraph
-- 适合：AI/ML岗位面试
-
-**Java版**
-- 框架：Spring Boot 3 + Spring AI + WebSocket
-- 优势：企业级成熟度高，Spring生态完善
-- 适合：后端/架构师岗位面试
-
-**Go版**
-- 框架：AgenticGoKit + Gin + goroutine
-- 优势：高并发性能，goroutine天然适合Agent并发
-- 适合：基础架构/高性能系统岗位面试
+- 前端：React + TypeScript + WebSocket
 
 ## 六、实施步骤
 
 按以下顺序实施，每步完成后上传GitHub：
 
 1. 初始化GitHub仓库 + 超详细README
-2. Python版核心实现（事件总线 + 5个Agent + 学习者模型 + API）
-3. Java版核心实现（Spring AI + 事件驱动 + 5个Agent）
-4. Go版核心实现（AgenticGoKit + EventBus + 5个Agent）
-5. React前端（学习界面 + WebSocket实时交互）
+2. Python核心实现（事件总线 + 6个Agent + 学习者模型 + API）
+3. React前端（学习界面 + WebSocket实时交互）
 6. 面试材料文档（八股文 + STAR + 简历模板 + 常见问题回答）
 7. 部署文档 + Docker Compose
 

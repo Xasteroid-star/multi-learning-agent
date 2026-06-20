@@ -1,8 +1,11 @@
 """拍照会话模型 -- 管理一次拍照→引导→解答的完整生命周期。"""
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from core.problem_analyzer import ProblemAnalysis
@@ -26,7 +29,7 @@ class ConversationEntry(BaseModel):
     role: str  # "system" | "student"
     text: str
     msg_type: str = "guidance"
-    hint_level: int | None = None
+    hint_level: Optional[int] = None
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -36,7 +39,7 @@ class PhotoSession(BaseModel):
     session_id: str = Field(default_factory=lambda: f"ps_{uuid.uuid4().hex[:8]}")
     learner_id: str
     state: SessionState = SessionState.IDLE
-    problem_analysis: ProblemAnalysis | None = None
+    problem_analysis: Optional[ProblemAnalysis] = None
     conversation_history: list[ConversationEntry] = Field(default_factory=list)
     current_step: int = 0
     hint_count: int = 0
@@ -50,7 +53,7 @@ class PhotoSession(BaseModel):
             return []
         return self.problem_analysis.solution_steps
 
-    def add_system_message(self, msg_type: str, text: str, hint_level: int | None = None) -> None:
+    def add_system_message(self, msg_type: str, text: str, hint_level: Optional[int] = None) -> None:
         self.conversation_history.append(ConversationEntry(
             role="system", text=text, msg_type=msg_type, hint_level=hint_level,
         ))

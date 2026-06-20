@@ -7,6 +7,8 @@ Agent 编排器 -- 初始化所有Agent并连接到EventBus。
 3. 提供对外接口供API层调用
 """
 
+from __future__ import annotations
+
 from core.event_bus import EventBus, Event, EventType
 from core.learner_model import LearnerModel
 from agents import (

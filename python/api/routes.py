@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
@@ -41,8 +43,8 @@ class PhotoReplyRequest(BaseModel):
 
 class ProfileResponse(BaseModel):
     learner_id: str
-    profile: dict | None = None
-    progress: dict | None = None
+    profile: Optional[dict] = None
+    progress: Optional[dict] = None
 
 
 @router.get("/health")
@@ -198,7 +200,7 @@ async def get_knowledge_graph(request: Request):
 
 @router.post("/photo-solve", response_model=PhotoSolveResponse)
 async def photo_solve(
-    image: UploadFile | None = File(None),
+    image: Optional[UploadFile] = File(None),
     learner_id: str = Form(...),
     problem_text: str = Form(""),
     request: Request = None,
@@ -215,31 +217,61 @@ async def photo_solve(
         if len(image_bytes) > 10 * 1024 * 1024:  # 10MB
             raise HTTPException(status_code=413, detail="图片大小不能超过 10MB")
 
-        from core.ocr_engine import recognize_math_from_photo
+        import logging
+        import tempfile
+        from pathlib import Path
+
+        _logger = logging.getLogger(__name__)
+
+        ocr_blocks = []
         try:
-            ocr_result = await recognize_math_from_photo(image_bytes)
+            # 保存上传的图片为临时文件（PaddleOCR/Tesseract 需要文件路径）
+            with tempfile.NamedTemporaryFile(
+                suffix=".jpg", delete=False
+            ) as tmp:
+                tmp.write(image_bytes)
+                tmp_path = tmp.name
 
-            if 0 < ocr_result.confidence < 0.5:
+            try:
+                from core.ocr_utils import ocr_image, ocr_diagnostics, preprocess_image
+                _logger.info("OCR engines available: %s", ocr_diagnostics())
+                # 先预处理图片（灰度 + 二值化），提升 Tesseract 识别率
+                try:
+                    _ = preprocess_image(tmp_path)
+                except Exception:
+                    pass  # 预处理失败不影响后续
+                ocr_blocks = ocr_image(tmp_path, engine="auto", preprocess=True)
+                _logger.info("OCR result: %d blocks", len(ocr_blocks))
+            finally:
+                # 清理临时文件
+                Path(tmp_path).unlink(missing_ok=True)
+
+            if ocr_blocks:
+                ocr_text = "\n".join(b.text for b in ocr_blocks)
+                # 只计算有实际文字内容的块的置信度
+                valid_blocks = [b for b in ocr_blocks if b.confidence > 0 and len(b.text.strip()) > 0]
+                avg_conf = sum(b.confidence for b in valid_blocks) / len(valid_blocks) if valid_blocks else 0
+                _logger.info("OCR text (conf=%.2f, valid_blocks=%d/%d): %s",
+                             avg_conf, len(valid_blocks), len(ocr_blocks), ocr_text[:200])
+                # 如果完全没有有效块才报错
+                if not valid_blocks and not ocr_text.strip():
+                    raise HTTPException(
+                        status_code=422,
+                        detail="图片不太清楚，识别置信度低，请换个角度重拍",
+                    )
+            elif not ocr_text:
                 raise HTTPException(
                     status_code=422,
-                    detail="图片不太清楚，识别置信度低，请换个角度重拍",
+                    detail="OCR 未能识别到文字，请在下方直接输入题目文字",
                 )
-
-            if "NOT_MATH" in ocr_result.problem_text:
-                raise HTTPException(
-                    status_code=422,
-                    detail="看起来不是数学题目，请上传数学题图片",
-                )
-
-            if not ocr_text and "[请设置" not in ocr_result.problem_text and "OCR 识别失败" not in ocr_result.problem_text:
-                ocr_text = ocr_result.problem_text
         except HTTPException:
             raise
-        except Exception:
+        except Exception as e:
+            _logger.exception("OCR failed")
             if not ocr_text:
                 raise HTTPException(
                     status_code=422,
-                    detail="OCR 识别失败，请在下方直接输入题目文字",
+                    detail=f"OCR 识别失败: {e}",
                 )
 
     if not ocr_text:

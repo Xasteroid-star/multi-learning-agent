@@ -8,6 +8,8 @@ FastAPI 应用入口。
     uvicorn api.main:app --reload --port 8000
 """
 
+from __future__ import annotations
+
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -31,12 +33,37 @@ logging.basicConfig(
 orchestrator: AgentOrchestrator | None = None
 
 
+def _warmup_ocr():
+    """后台预初始化 OCR 引擎（PaddleOCR 下载模型 + 加载），避免首个请求超时。"""
+    import os
+    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+    logger = logging.getLogger(__name__)
+    try:
+        from core.ocr_utils import _get_paddle, _check_tesseract
+        t_ok = _check_tesseract()
+        logger.info("Tesseract: %s", "ready" if t_ok else "not found")
+        logger.info("Warming up PaddleOCR (downloading mobile models if needed)...")
+        paddle = _get_paddle()
+        if paddle:
+            logger.info("PaddleOCR ready")
+        else:
+            logger.warning("PaddleOCR init failed, will fallback to Tesseract")
+    except Exception as e:
+        logger.warning("OCR warmup failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global orchestrator
+    import asyncio
+
     orchestrator = AgentOrchestrator()
     app.state.orchestrator = orchestrator
     logging.getLogger(__name__).info("Agent orchestrator started with 6 agents (incl. PhotoTutor)")
+
+    # 后台预热 OCR 引擎
+    asyncio.get_event_loop().run_in_executor(None, _warmup_ocr)
+
     yield
     logging.getLogger(__name__).info("Shutting down")
 

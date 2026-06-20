@@ -104,9 +104,13 @@
       <input type="file" id="imgInput" accept="image/jpeg,image/png" onchange="pickFile(event)">
       <div id="uploadHint">
         <div class="icon">📷</div>
-        <div class="txt">点击上传数学题照片<br><span style="font-size:10px">支持 JPG / PNG</span></div>
+        <div class="txt">点击上传数学题照片<br><span style="font-size:10px">或直接在下方输入题目</span></div>
       </div>
       <img id="preview" style="display:none">
+    </div>
+
+    <div class="field">
+      <textarea id="textInput" rows="3" placeholder="或直接输入题目文字，如：已知二次函数 y=x²+2x-3，求顶点坐标" oninput="document.getElementById('goBtn').disabled=!this.value.trim()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;resize:vertical;font-family:inherit;"></textarea>
     </div>
 
     <div class="error-bar" id="errorBar"></div>
@@ -159,14 +163,16 @@ function pickFile(e) {
 }
 
 async function start() {
-  if (!file) return;
+  const text = document.getElementById('textInput').value.trim();
+  if (!file && !text) return;
   const btn = document.getElementById('goBtn');
   btn.disabled = true; btn.textContent = '识别中…';
   document.getElementById('dot').classList.remove('off');
   hideError();
 
   const fd = new FormData();
-  fd.append('image', file);
+  if (file) fd.append('image', file);
+  if (text) fd.append('problem_text', text);
   fd.append('learner_id', document.getElementById('learnerId').value || '小明');
 
   try {

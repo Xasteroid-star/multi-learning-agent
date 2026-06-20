@@ -16,7 +16,7 @@ import logging
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -74,7 +74,7 @@ class Event(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
     learner_id: str
     data: dict[str, Any] = Field(default_factory=dict)
-    correlation_id: str | None = None  # 用于追踪事件链
+    correlation_id: Optional[str] = None  # 用于追踪事件链
 
 
 EventHandler = Callable[[Event], Coroutine[Any, Any, None]]
@@ -146,8 +146,8 @@ class EventBus:
 
     def get_history(
         self,
-        learner_id: str | None = None,
-        event_type: EventType | None = None,
+        learner_id: Optional[str] = None,
+        event_type: Optional[EventType] = None,
         limit: int = 50,
     ) -> list[Event]:
         """查询事件历史，支持按学习者和事件类型过滤。"""

@@ -1,8 +1,8 @@
 # 部署指南
 
-## 方式一：本地开发（推荐新手）
+## 方式一：本地开发
 
-### Python 版
+### 后端
 
 ```bash
 cd python
@@ -11,23 +11,6 @@ source venv/bin/activate
 pip install -r requirements.txt
 python -m api.main
 # 访问 http://localhost:8000/docs
-```
-
-### Java 版
-
-```bash
-cd java
-mvn clean install -DskipTests
-mvn spring-boot:run
-# 访问 http://localhost:8080/api/v1/health
-```
-
-### Go 版
-
-```bash
-cd golang
-go run cmd/main.go
-# 访问 http://localhost:8081/api/v1/health
 ```
 
 ### 前端
@@ -69,8 +52,6 @@ docker-compose down
 | 工具 | 版本 |
 |------|------|
 | Python | 3.11+ |
-| Java | 21+ |
-| Go | 1.22+ |
 | Node.js | 20+ |
 | Docker | 24+ |
 | Docker Compose | 2.20+ |

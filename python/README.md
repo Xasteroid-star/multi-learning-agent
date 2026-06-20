@@ -1,6 +1,6 @@
-# Python 版 -- 多Agent智能教育系统
+# 多Agent智能教育系统
 
-> 基于 LangGraph + FastAPI + asyncio 的实现
+> 基于 LangGraph + FastAPI + asyncio
 
 ## 技术栈
 

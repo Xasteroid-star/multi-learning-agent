@@ -1,6 +1,9 @@
 """学生画像 -- 记录学生基础信息和学习偏好，与 LearnerModel (BKT) 互补。"""
 
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -97,7 +100,7 @@ class ProfileStore:
             await db.commit()
         logger.info("Saved profile for learner=%s", profile.learner_id)
 
-    async def load(self, learner_id: str) -> "StudentProfile | None":
+    async def load(self, learner_id: str) -> Optional["StudentProfile"]:
         """加载学生画像。"""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
