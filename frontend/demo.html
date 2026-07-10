@@ -84,20 +84,52 @@
 <div class="app" id="appRoot">
   <div class="left">
     <div class="header">
-      <h1>MathGuide</h1>
-      <div class="sub">拍照搜题 · 苏格拉底式引导 · 6-Agent</div>
+      <h1>🌊 MathGuide</h1>
+      <div class="sub">拍照搜题 · 苏格拉底式引导 · 7-Agent 成长系统</div>
     </div>
 
     <div class="field">
-      <label>学生 ID</label>
-      <input id="learnerId" value="小明" placeholder="输入学生ID">
-    </div>
-    <div class="field">
-      <label>年级</label>
-      <select id="grade">
-        <option>初一</option><option>初二</option><option selected>初三</option>
-        <option>高一</option><option>高二</option><option>高三</option>
+      <label>👤 选择学员</label>
+      <select id="learnerSelect" onchange="onLearnerSelect()" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:13px;">
+        <option value="">-- 加载中… --</option>
       </select>
+    </div>
+
+    <!-- 新建学生 -->
+    <div id="newStudentForm" style="display:none;padding:0 20px 8px;">
+      <div class="field" style="padding:0;margin-bottom:6px;">
+        <input id="newName" placeholder="学生姓名" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:13px;">
+      </div>
+      <div class="field" style="padding:0;margin-bottom:6px;">
+        <select id="newGrade" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-size:13px;">
+          <option>小一</option><option>小二</option><option>小三</option><option>小四</option><option>小五</option><option>小六</option>
+          <option>初一</option><option>初二</option><option selected>初三</option>
+          <option>高一</option><option>高二</option><option>高三</option>
+        </select>
+      </div>
+      <button class="btn btn-go" onclick="createStudent()" style="font-size:12px;padding:6px 14px;">✅ 创建学员</button>
+    </div>
+    <div style="padding:0 20px 8px;">
+      <a href="#" onclick="toggleNewStudent()" style="font-size:11px;color:var(--accent);">+ 新建学员</a>
+    </div>
+
+    <!-- 画像卡片 -->
+    <div id="profileCard" style="display:none;margin:0 20px 12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="font-size:14px;" id="pfName">—</strong>
+        <span style="font-size:11px;color:var(--muted);" id="pfGrade">—</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;color:var(--muted);font-size:11px;">
+        <span>📷 拍照: <b id="pfPhotos" style="color:var(--text);">0</b>次</span>
+        <span>📝 答题: <b id="pfSessions" style="color:var(--text);">0</b>次</span>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">🌊 五力概览</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;text-align:center;" id="pfForces"></div>
+      </div>
+      <div style="margin-top:6px;">
+        <a href="#" onclick="viewGrowthReport()" style="font-size:10px;color:var(--accent);">📊 查看完整成长报告</a>
+      </div>
     </div>
 
     <div class="upload" id="uploadZone" onclick="document.getElementById('imgInput').click()">
@@ -146,6 +178,128 @@
 <script>
 const API = window.location.origin + '/api/v1';
 let sid = null, curStep = 0, totalSteps = 0, file = null;
+let currentLearnerId = '';
+let currentGrade = '初三';
+
+// ── 初始化：加载学生列表 ──
+(async function init() {
+  await loadProfiles();
+})();
+
+async function loadProfiles() {
+  const sel = document.getElementById('learnerSelect');
+  try {
+    const r = await fetch(`${API}/profiles`);
+    const data = await r.json();
+    sel.innerHTML = '<option value="">-- 选择学员 --</option>';
+    if (data.profiles && data.profiles.length > 0) {
+      data.profiles.forEach(p => {
+        sel.innerHTML += `<option value="${p.learner_id}">${p.name} · ${p.grade} · 📷${p.total_photo_solves}次</option>`;
+      });
+      // 自动选中第一个
+      sel.value = data.profiles[0].learner_id;
+      onLearnerSelect();
+    } else {
+      sel.innerHTML += '<option value="__new__">+ 新建第一个学员</option>';
+      toggleNewStudent();
+    }
+  } catch(e) {
+    sel.innerHTML = '<option value="">加载失败，输入姓名后自动创建</option>';
+  }
+}
+
+async function onLearnerSelect() {
+  const learnerId = document.getElementById('learnerSelect').value;
+  if (!learnerId) { hideProfileCard(); return; }
+  if (learnerId === '__new__') { toggleNewStudent(); return; }
+
+  currentLearnerId = learnerId;
+  document.getElementById('newStudentForm').style.display = 'none';
+
+  // 加载画像
+  try {
+    const r = await fetch(`${API}/profile/${learnerId}`);
+    const d = await r.json();
+    showProfileCard(d);
+  } catch(e) {
+    hideProfileCard();
+  }
+}
+
+function showProfileCard(data) {
+  const pf = data.profile || {};
+  const prog = data.progress || {};
+  document.getElementById('profileCard').style.display = 'block';
+  document.getElementById('pfName').textContent = pf.name || data.learner_id;
+  document.getElementById('pfGrade').textContent = pf.grade || '—';
+  document.getElementById('pfPhotos').textContent = pf.total_photo_solves || 0;
+  document.getElementById('pfSessions').textContent = pf.total_sessions || 0;
+
+  // 五力概览
+  const forces = {
+    curiosity: { name:'🔍好奇心', score: pf.curiosity_score || 25 },
+    creativity: { name:'🎨创造力', score: pf.creativity_score || 25 },
+    collaboration: { name:'🤝协作力', score: pf.collaboration_score || 25 },
+    resilience: { name:'💪抗逆力', score: pf.resilience_score || 25 },
+    communication: { name:'🗣️表达力', score: pf.communication_score || 25 },
+  };
+  document.getElementById('pfForces').innerHTML = Object.entries(forces).map(([k,v]) => {
+    const lvl = v.score < 30 ? '#f87171' : v.score < 55 ? '#fbbf24' : v.score < 75 ? '#38bdf8' : '#4ade80';
+    return `<div style="font-size:10px;line-height:1.4;">
+      <div style="font-size:14px;">${v.name.slice(0,2)}</div>
+      <div style="color:${lvl};font-weight:600;">${Math.round(v.score)}</div>
+    </div>`;
+  }).join('');
+
+  currentGrade = pf.grade || '初三';
+  // 如果当前没有解题会话，更新 goBtn 状态
+  if (!sid) {
+    document.getElementById('goBtn').disabled = !(file || document.getElementById('textInput').value.trim());
+  }
+}
+
+function hideProfileCard() {
+  document.getElementById('profileCard').style.display = 'none';
+}
+
+function toggleNewStudent() {
+  const form = document.getElementById('newStudentForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  if (form.style.display === 'block') {
+    document.getElementById('newName').focus();
+  }
+}
+
+async function createStudent() {
+  const name = document.getElementById('newName').value.trim();
+  const grade = document.getElementById('newGrade').value;
+  if (!name) { alert('请输入姓名'); return; }
+
+  const learnerId = name + '_' + Date.now().toString(36);
+  try {
+    // 通过 profile store 创建画像
+    await fetch(`${API}/profile/${learnerId}`, { method: 'GET' }); // 触发创建
+    // 直接更新选择器
+    const sel = document.getElementById('learnerSelect');
+    sel.innerHTML += `<option value="${learnerId}" selected>${name} · ${grade} · 新建</option>`;
+    sel.value = learnerId;
+    currentLearnerId = learnerId;
+    currentGrade = grade;
+    document.getElementById('newStudentForm').style.display = 'none';
+    document.getElementById('newName').value = '';
+    onLearnerSelect();
+  } catch(e) {
+    alert('创建失败: ' + e.message);
+  }
+}
+
+function viewGrowthReport() {
+  if (!currentLearnerId) return;
+  const name = document.getElementById('pfName').textContent || currentLearnerId;
+  window.open(`/report?learner_id=${encodeURIComponent(currentLearnerId)}&child_name=${encodeURIComponent(name)}&camp_name=${encodeURIComponent('自然探索营')}&season=暑假&age=12&days=7`, '_blank');
+}
+
+// ── 拍照引导逻辑（沿用，替换 learnerId 来源）──
 
 function pickFile(e) {
   file = e.target.files[0];
@@ -170,10 +324,12 @@ async function start() {
   document.getElementById('dot').classList.remove('off');
   hideError();
 
+  const learnerId = currentLearnerId || document.getElementById('learnerSelect').value || '小明';
+
   const fd = new FormData();
   if (file) fd.append('image', file);
   if (text) fd.append('problem_text', text);
-  fd.append('learner_id', document.getElementById('learnerId').value || '小明');
+  fd.append('learner_id', learnerId);
 
   try {
     const r = await fetch(`${API}/photo-solve`, { method: 'POST', body: fd });
@@ -212,11 +368,13 @@ async function send() {
   document.getElementById('sendBtn').disabled = true;
   addMsg('me', '', txt);
 
+  const learnerId = currentLearnerId || document.getElementById('learnerSelect').value || '小明';
+
   try {
     const r = await fetch(`${API}/photo-session/${sid}/reply`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ learner_id: document.getElementById('learnerId').value, reply: txt })
+      body: JSON.stringify({ learner_id: learnerId, reply: txt })
     });
     if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || `HTTP ${r.status}`); }
 
@@ -233,6 +391,8 @@ async function send() {
       document.getElementById('goBtn').textContent = '再来一题';
       document.getElementById('goBtn').disabled = false;
       document.getElementById('dot').classList.add('off');
+      // 刷新画像数据
+      onLearnerSelect();
     } else {
       inp.disabled = false; document.getElementById('sendBtn').disabled = false;
       inp.focus();

@@ -53,3 +53,11 @@ docker-compose.override.yml
 *.sqlite3
 .env.bak
 2026-05-29-photo-tutor-design.md
+
+# 本地保留不上传
+plan.md
+docs/interview-guide.md
+2026-05-29-photo-tutor-design.md
+python/data/chroma/
+python/data/student_profiles.db
+python/benchmark.py

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学员成长报告</title>
+<style>
+  :root {
+    --bg: #faf9f7; --card: #fff; --text: #2d2a26; --muted: #8b8680;
+    --accent: #e8734a; --warm: #f4a261; --soft: #e9c46a;
+    --green: #2a9d8f; --blue: #457b9d; --purple: #9b6b9e;
+    --cream: #fef8f0;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Georgia', 'Noto Serif SC', 'Source Han Serif SC', serif; background: var(--bg); color: var(--text); line-height: 1.8; }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px; }
+  @media (max-width: 600px) { .page { padding: 32px 20px; } }
+
+  /* 封面 */
+  .cover { text-align: center; padding: 60px 0 50px; border-bottom: 2px solid #e8e3dc; margin-bottom: 40px; }
+  .cover .icon { font-size: 56px; margin-bottom: 16px; }
+  .cover h1 { font-size: 32px; font-weight: normal; letter-spacing: 2px; margin-bottom: 8px; }
+  .cover .meta { font-size: 14px; color: var(--muted); margin-bottom: 20px; }
+  .cover .intro { font-size: 17px; line-height: 2; color: #555; max-width: 500px; margin: 0 auto; }
+
+  /* 雷达图容器 */
+  .radar-wrap { display: flex; justify-content: center; margin: 32px 0; }
+  .radar-wrap canvas { max-width: 300px; }
+
+  /* 五力卡片 */
+  .force-card { background: var(--card); border-radius: 14px; padding: 24px 28px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.04); border-left: 4px solid #e8e3dc; display: flex; gap: 16px; align-items: flex-start; }
+  .force-card .f-icon { font-size: 32px; flex-shrink: 0; width: 48px; text-align: center; }
+  .force-card .f-body { flex: 1; }
+  .force-card .f-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .force-card .f-name { font-size: 18px; font-weight: 600; }
+  .force-card .f-score { font-size: 28px; font-weight: 700; }
+  .force-card .f-bar { height: 6px; background: #f0ede8; border-radius: 3px; margin: 8px 0 12px; overflow: hidden; }
+  .force-card .f-bar-fill { height: 100%; border-radius: 3px; transition: width .6s ease; }
+  .force-card .f-level { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .force-card .f-desc { font-size: 15px; color: #555; line-height: 1.8; }
+
+  /* 章节 */
+  .section { margin-bottom: 40px; }
+  .section h2 { font-size: 22px; font-weight: normal; border-bottom: 1px solid #e8e3dc; padding-bottom: 12px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+  .section .s-content { font-size: 16px; color: #555; line-height: 2; }
+  .section .s-content p { margin-bottom: 8px; }
+
+  /* 高光 */
+  .highlight-item { background: var(--cream); border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; font-size: 15px; }
+  .highlight-item .h-icon { font-size: 20px; margin-right: 6px; }
+
+  /* 加载 */
+  .loading { text-align: center; padding: 120px 0; color: var(--muted); font-size: 16px; }
+  .loading .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #e8e3dc; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; margin-bottom: 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error { text-align: center; padding: 80px 0; color: #e8734a; }
+</style>
+</head>
+<body>
+<div class="page" id="app">
+  <div class="loading"><div class="spinner"></div><p>正在生成成长报告...</p></div>
+</div>
+
+<script>
+const API = window.location.origin + '/api/v1';
+const params = new URLSearchParams(window.location.search);
+const learnerId = params.get('learner_id') || '';
+const childName = params.get('child_name') || learnerId || '学员';
+const campName = params.get('camp_name') || '营地';
+const season = params.get('season') || '暑假';
+const age = params.get('age') || '10';
+const days = params.get('days') || '7';
+
+// ── 颜色方案 ──
+const forceColors = {
+  curiosity: '#e8734a',
+  creativity: '#9b6b9e',
+  collaboration: '#2a9d8f',
+  resilience: '#457b9d',
+  communication: '#f4a261',
+};
+const forceIcons = {
+  curiosity: '🔍', creativity: '🎨', collaboration: '🤝',
+  resilience: '💪', communication: '🗣️',
+};
+
+function scoreColor(s) {
+  if (s < 30) return '#e76f51';
+  if (s < 55) return '#f4a261';
+  if (s < 75) return '#2a9d8f';
+  return '#457b9d';
+}
+
+function levelName(s) {
+  if (s < 30) return '萌芽期'; if (s < 55) return '成长期';
+  if (s < 75) return '发展期'; return '绽放期';
+}
+
+async function load() {
+  if (!learnerId) {
+    document.getElementById('app').innerHTML = '<div class="error"><h2>缺少学员 ID</h2><p>请从学员页面跳转</p></div>';
+    return;
+  }
+
+  try {
+    // 1. 获取五力数据
+    const fr = await fetch(`${API}/growth/forces/${learnerId}`);
+    const forcesData = await fr.json();
+    const summary = forcesData.summary || {};
+
+    // 2. 生成报告
+    const rr = await fetch(`${API}/growth/report/${learnerId}?child_name=${encodeURIComponent(childName)}&camp_name=${encodeURIComponent(campName)}&season=${encodeURIComponent(season)}&age=${age}&days=${days}`, { method: 'POST' });
+    const report = await rr.json();
+
+    render(summary, report);
+  } catch(e) {
+    document.getElementById('app').innerHTML = `<div class="error"><h2>加载失败</h2><p>${e.message}</p></div>`;
+  }
+}
+
+function render(summary, report) {
+  const sections = report.sections || [];
+  let html = '';
+
+  // 封面
+  const coverSection = sections.find(s => s.order === 1);
+  html += `<div class="cover">
+    <div class="icon">🌊</div>
+    <h1>${escapeHtml(childName)}的成长报告</h1>
+    <div class="meta">${escapeHtml(campName)} · ${escapeHtml(season)} · ${new Date().toISOString().slice(0,10)}</div>
+    <div class="intro">${coverSection ? coverSection.content.replace(/\*\*/g,'') : ''}</div>
+  </div>`;
+
+  // 雷达图 + 五力总分
+  html += `<div class="radar-wrap"><canvas id="radarCanvas" width="300" height="300"></canvas></div>`;
+
+  // 五力卡片
+  const forceOrder = ['curiosity','creativity','collaboration','resilience','communication'];
+  const forceSections = sections.filter(s => s.order === 2);
+  forceOrder.forEach((key, i) => {
+    const s = forceSections[i];
+    const score = summary[key]?.score || 25;
+    const color = forceColors[key] || '#aaa';
+    html += `<div class="force-card" style="border-left-color:${color}">
+      <div class="f-icon">${forceIcons[key]}</div>
+      <div class="f-body">
+        <div class="f-header">
+          <span class="f-name">${summary[key]?.name || key}</span>
+          <span class="f-score" style="color:${scoreColor(score)}">${Math.round(score)}</span>
+        </div>
+        <div class="f-bar"><div class="f-bar-fill" style="width:${score}%;background:${color}"></div></div>
+        <div class="f-level">📌 ${levelName(score)}</div>
+        <div class="f-desc">${s ? cleanMarkdown(s.content) : ''}</div>
+      </div>
+    </div>`;
+  });
+
+  // 高光时刻
+  const highlightSection = sections.find(s => s.order === 3);
+  if (highlightSection) {
+    const highlights = parseHighlights(highlightSection.content);
+    html += `<div class="section"><h2>✨ 高光时刻</h2>`;
+    highlights.forEach(h => {
+      html += `<div class="highlight-item"><span class="h-icon">⭐</span>${escapeHtml(h)}</div>`;
+    });
+    html += `</div>`;
+  }
+
+  // 成长建议
+  const suggestSection = sections.find(s => s.order === 4);
+  if (suggestSection) {
+    html += `<div class="section"><h2>🌱 继续成长的建议</h2><div class="s-content">${suggestSection.content.replace(/\n/g,'<br>')}</div></div>`;
+  }
+
+  // 导师寄语
+  const mentorSection = sections.find(s => s.order === 5);
+  if (mentorSection) {
+    html += `<div class="section"><h2>💌 导师寄语</h2><div class="s-content">${mentorSection.content.replace(/\n/g,'<br>')}</div></div>`;
+  }
+
+  document.getElementById('app').innerHTML = html;
+
+  // 画雷达图
+  setTimeout(drawRadar, 200);
+}
+
+function cleanMarkdown(text) {
+  return text.replace(/\*\*/g, '').replace(/`/g, '').replace(/>\s*/g, '').trim();
+}
+
+function parseHighlights(text) {
+  // 按 **xxx** — 或 - 分割
+  const items = text.split(/\n/).filter(l => l.trim() && !l.startsWith('**作品') && l.trim() !== '');
+  if (items.length <= 1) return [text.replace(/\*\*/g,'').trim()];
+  return items.map(l => l.replace(/\*\*/g,'').replace(/^[-—]\s*/, '').trim()).filter(Boolean);
+}
+
+function escapeHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ── 雷达图 ──
+function drawRadar() {
+  const canvas = document.getElementById('radarCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = 300, h = 300, cx = w/2, cy = h/2, r = 110;
+  const dims = [
+    { key:'curiosity', label:'🔍 好奇心' },
+    { key:'creativity', label:'🎨 创造力' },
+    { key:'collaboration', label:'🤝 协作力' },
+    { key:'resilience', label:'💪 抗逆力' },
+    { key:'communication', label:'🗣️ 表达力' },
+  ];
+  const n = dims.length;
+
+  ctx.clearRect(0,0,w,h);
+
+  // 背景网格
+  for (let level=1; level<=4; level++) {
+    ctx.beginPath();
+    dims.forEach((_,i) => {
+      const angle = -Math.PI/2 + i * 2*Math.PI/n;
+      const x = cx + r * level/4 * Math.cos(angle);
+      const y = cy + r * level/4 * Math.sin(angle);
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = '#e8e3dc';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // 轴线
+  dims.forEach((_,i) => {
+    const angle = -Math.PI/2 + i * 2*Math.PI/n;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+    ctx.strokeStyle = '#e8e3dc';
+    ctx.stroke();
+  });
+
+  // 数据区域（用 forces API 数据）
+  const summary = {}; // 从 DOM 读取分数
+  dims.forEach(d => {
+    const card = [...document.querySelectorAll('.force-card .f-score')];
+    // 简单方法: 直接重新 fetch 太慢, 从 HTML 中解析
+  });
+
+  // 简化: 用 fetch 来的 summary 数据重绘
+  fetch(`${API}/growth/forces/${learnerId}`).then(r=>r.json()).then(data => {
+    const summary = data.summary || {};
+    ctx.beginPath();
+    dims.forEach((d,i) => {
+      const score = (summary[d.key]?.score || 25) / 100;
+      const angle = -Math.PI/2 + i * 2*Math.PI/n;
+      const x = cx + r * score * Math.cos(angle);
+      const y = cy + r * score * Math.sin(angle);
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(232,115,74,0.15)';
+    ctx.fill();
+    ctx.strokeStyle = '#e8734a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 数据点
+    dims.forEach((d,i) => {
+      const score = (summary[d.key]?.score || 25) / 100;
+      const angle = -Math.PI/2 + i * 2*Math.PI/n;
+      const x = cx + r * score * Math.cos(angle);
+      const y = cy + r * score * Math.sin(angle);
+      ctx.beginPath();
+      ctx.arc(x,y,4,0,2*Math.PI);
+      ctx.fillStyle = forceColors[d.key] || '#aaa';
+      ctx.fill();
+    });
+  });
+
+  // 标签
+  ctx.fillStyle = '#555';
+  ctx.font = '13px "Georgia","Noto Serif SC",serif';
+  ctx.textAlign = 'center';
+  dims.forEach((d,i) => {
+    const angle = -Math.PI/2 + i * 2*Math.PI/n;
+    const x = cx + (r+28) * Math.cos(angle);
+    const y = cy + (r+28) * Math.sin(angle) + 5;
+    ctx.fillText(d.label, x, y);
+  });
+}
+
+load();
+</script>
+</body>
+</html>

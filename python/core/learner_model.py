@@ -90,6 +90,26 @@ class LearnerModel:
         self.total_interactions: int = 0
         self.metadata: dict[str, Any] = {}
 
+        # 五力模型（延迟导入避免循环依赖）
+        from core.five_forces_model import build_default_five_forces_profile
+        self.five_forces = build_default_five_forces_profile(learner_id)
+
+    def record_force_observation(
+        self, dimension: str, score: float, evidence: str,
+        context: str = "", observer: str = "",
+    ) -> None:
+        """记录五力观察（便捷方法）。"""
+        from core.five_forces_model import ForceDimension, ForceObservation
+        try:
+            dim = ForceDimension(dimension)
+        except ValueError:
+            dim = ForceDimension.CURIOSITY
+        obs = ForceObservation(
+            dimension=dim, score=score, evidence=evidence,
+            context=context, observer=observer,
+        )
+        self.five_forces.record_observation(obs)
+
     def get_state(self, knowledge_id: str) -> KnowledgeState:
         """获取某知识点的状态，不存在则创建。"""
         if knowledge_id not in self.knowledge_states:

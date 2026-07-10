@@ -23,6 +23,8 @@ from fastapi.responses import HTMLResponse
 from api.routes import router
 from api.websocket import ws_router
 from api.orchestrator import AgentOrchestrator
+from core.prompt_library import PromptLibrary
+from core.rag_engine import RAGEngine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,7 +61,21 @@ async def lifespan(app: FastAPI):
 
     orchestrator = AgentOrchestrator()
     app.state.orchestrator = orchestrator
-    logging.getLogger(__name__).info("Agent orchestrator started with 6 agents (incl. PhotoTutor)")
+    logging.getLogger(__name__).info("Agent orchestrator started with 7 agents (incl. PhotoTutor + Growth)")
+
+    # 初始化 Prompt 资产库
+    prompt_lib = PromptLibrary("data/prompts")
+    prompt_lib.load_all()
+    app.state.prompt_library = prompt_lib
+
+    # 初始化 RAG 知识库引擎
+    rag = RAGEngine()
+    rag.build_index()
+    app.state.rag_engine = rag
+
+    # 初始化报告生成器（注入 prompt_lib）
+    from agents.growth.report_writer import ReportWriter
+    orchestrator.report_writer = ReportWriter(prompt_lib)
 
     # 后台预热 OCR 引擎
     asyncio.get_event_loop().run_in_executor(None, _warmup_ocr)
@@ -71,14 +87,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="多Agent智能教育系统",
     description=(
-        "6-Agent Mesh+事件驱动架构的个性化学习系统。\n\n"
+        "7-Agent Mesh+事件驱动架构的个性化学习与成长追踪系统。\n\n"
         "**Agent列表：**\n"
         "- PhotoTutor Agent：拍照搜题 + 苏格拉底引导\n"
         "- Assessment Agent：知识点评估\n"
         "- Tutor Agent：苏格拉底式教学\n"
         "- Curriculum Agent：学习路径规划\n"
         "- Hint Agent：分级提示\n"
-        "- Engagement Agent：互动监测"
+        "- Engagement Agent：互动监测\n"
+        "- Growth Agent：学员成长追踪 + 五力评估"
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -106,6 +123,15 @@ async def index():
     if demo_path.exists():
         return HTMLResponse(demo_path.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>demo.html not found</h1>", status_code=404)
+
+
+@app.get("/report", response_class=HTMLResponse)
+async def growth_report_page():
+    """成长报告展示页面。"""
+    report_path = FRONTEND_DIR / "growth-report.html"
+    if report_path.exists():
+        return HTMLResponse(report_path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>report page not found</h1>", status_code=404)
 
 
 if __name__ == "__main__":

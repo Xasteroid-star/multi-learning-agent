@@ -20,6 +20,14 @@ class StudentProfile(BaseModel):
     weak_topics: list[str] = Field(default_factory=list)
     strong_topics: list[str] = Field(default_factory=list)
     recent_activity: list[dict] = Field(default_factory=list)
+    # 五力模型字段
+    curiosity_score: float = 25.0
+    creativity_score: float = 25.0
+    collaboration_score: float = 25.0
+    resilience_score: float = 25.0
+    communication_score: float = 25.0
+    force_observations_count: int = 0
+    camp_history: list[dict] = Field(default_factory=list)
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
@@ -55,6 +63,13 @@ class ProfileStore:
                     weak_topics TEXT NOT NULL DEFAULT '[]',
                     strong_topics TEXT NOT NULL DEFAULT '[]',
                     recent_activity TEXT NOT NULL DEFAULT '[]',
+                    curiosity_score REAL NOT NULL DEFAULT 25.0,
+                    creativity_score REAL NOT NULL DEFAULT 25.0,
+                    collaboration_score REAL NOT NULL DEFAULT 25.0,
+                    resilience_score REAL NOT NULL DEFAULT 25.0,
+                    communication_score REAL NOT NULL DEFAULT 25.0,
+                    force_observations_count INTEGER NOT NULL DEFAULT 0,
+                    camp_history TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -67,6 +82,7 @@ class ProfileStore:
         weak_json = json.dumps(profile.weak_topics, ensure_ascii=False)
         strong_json = json.dumps(profile.strong_topics, ensure_ascii=False)
         activity_json = json.dumps(profile.recent_activity, ensure_ascii=False)
+        camp_json = json.dumps(profile.camp_history, ensure_ascii=False)
 
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
@@ -75,8 +91,13 @@ class ProfileStore:
                     (learner_id, name, grade, learning_style, preferred_pace,
                      total_sessions, total_photo_solves,
                      weak_topics, strong_topics, recent_activity,
+                     curiosity_score, creativity_score, collaboration_score,
+                     resilience_score, communication_score, force_observations_count,
+                     camp_history,
                      created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?)
                 ON CONFLICT(learner_id) DO UPDATE SET
                     name = excluded.name,
                     grade = excluded.grade,
@@ -87,6 +108,13 @@ class ProfileStore:
                     weak_topics = excluded.weak_topics,
                     strong_topics = excluded.strong_topics,
                     recent_activity = excluded.recent_activity,
+                    curiosity_score = excluded.curiosity_score,
+                    creativity_score = excluded.creativity_score,
+                    collaboration_score = excluded.collaboration_score,
+                    resilience_score = excluded.resilience_score,
+                    communication_score = excluded.communication_score,
+                    force_observations_count = excluded.force_observations_count,
+                    camp_history = excluded.camp_history,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -94,6 +122,10 @@ class ProfileStore:
                     profile.learning_style, profile.preferred_pace,
                     profile.total_sessions, profile.total_photo_solves,
                     weak_json, strong_json, activity_json,
+                    profile.curiosity_score, profile.creativity_score,
+                    profile.collaboration_score, profile.resilience_score,
+                    profile.communication_score, profile.force_observations_count,
+                    camp_json,
                     profile.created_at, profile.updated_at,
                 ),
             )
@@ -119,6 +151,13 @@ class ProfileStore:
             weak_topics=json.loads(row["weak_topics"]),
             strong_topics=json.loads(row["strong_topics"]),
             recent_activity=json.loads(row["recent_activity"]),
+            curiosity_score=row["curiosity_score"],
+            creativity_score=row["creativity_score"],
+            collaboration_score=row["collaboration_score"],
+            resilience_score=row["resilience_score"],
+            communication_score=row["communication_score"],
+            force_observations_count=row["force_observations_count"],
+            camp_history=json.loads(row["camp_history"]),
             created_at=row["created_at"], updated_at=row["updated_at"],
         )
 
@@ -126,11 +165,46 @@ class ProfileStore:
     async def refresh_from_bkt(
         profile: "StudentProfile", learner_model: "LearnerModel",
     ) -> "StudentProfile":
-        """从 BKT LearnerModel 刷新 weak_topics 和 strong_topics。不会自动保存。"""
+        """从 BKT LearnerModel 刷新 weak_topics、strong_topics 和五力数据。不会自动保存。"""
         weak = learner_model.get_weak_points(threshold=0.4, limit=10)
         strong = learner_model.get_strong_points(threshold=0.85)
         profile.weak_topics = [s.knowledge_id for s in weak]
         profile.strong_topics = [s.knowledge_id for s in strong]
+
+        # 同步五力数据到 profile
+        from core.five_forces_model import ForceDimension
+        forces = learner_model.five_forces
+        profile.curiosity_score = forces.get_score(ForceDimension.CURIOSITY)
+        profile.creativity_score = forces.get_score(ForceDimension.CREATIVITY)
+        profile.collaboration_score = forces.get_score(ForceDimension.COLLABORATION)
+        profile.resilience_score = forces.get_score(ForceDimension.RESILIENCE)
+        profile.communication_score = forces.get_score(ForceDimension.COMMUNICATION)
+        profile.force_observations_count = len(forces.observations)
+        profile.updated_at = datetime.now().isoformat()
+        return profile
+
+    @staticmethod
+    def load_forces_into_model(profile: "StudentProfile", learner_model: "LearnerModel") -> None:
+        """将 ProfileStore 中持久化的五力数据恢复到 LearnerModel 的内存中。
+
+        在服务器启动 / 首次加载学员时调用，确保重启后数据不丢失。
+        """
+        from core.five_forces_model import ForceDimension, ForceObservation
+        forces = learner_model.five_forces
+
+        # 直接用已持久化的分数覆盖默认值
+        score_map = {
+            ForceDimension.CURIOSITY: profile.curiosity_score,
+            ForceDimension.CREATIVITY: profile.creativity_score,
+            ForceDimension.COLLABORATION: profile.collaboration_score,
+            ForceDimension.RESILIENCE: profile.resilience_score,
+            ForceDimension.COMMUNICATION: profile.communication_score,
+        }
+        for dim, score in score_map.items():
+            state = forces.dimensions.get(dim.value)
+            if state:
+                state.current_score = score
+                state.observation_count = profile.force_observations_count
         from datetime import datetime
         profile.updated_at = datetime.now().isoformat()
         return profile

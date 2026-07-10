@@ -49,7 +49,7 @@ class ProfileResponse(BaseModel):
 
 @router.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "multi-agent-education", "agents": 6}
+    return {"status": "ok", "service": "multi-agent-education", "agents": 7}
 
 
 @router.get("/llm-test")
@@ -399,3 +399,234 @@ async def get_profile(
         profile=profile_data,
         progress=progress,
     )
+
+
+@router.get("/profiles")
+async def list_profiles(request: Request):
+    """列出所有已保存的学生画像（用于选择器）。"""
+    try:
+        from core.student_profile import ProfileStore
+        store = ProfileStore()
+        await store.init_db()
+
+        import aiosqlite
+        async with aiosqlite.connect(store.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT learner_id, name, grade, total_sessions, total_photo_solves, "
+                "curiosity_score, creativity_score, collaboration_score, "
+                "resilience_score, communication_score, "
+                "updated_at FROM student_profiles ORDER BY updated_at DESC"
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+        profiles = []
+        for row in rows:
+            profiles.append({
+                "learner_id": row["learner_id"],
+                "name": row["name"],
+                "grade": row["grade"],
+                "total_sessions": row["total_sessions"],
+                "total_photo_solves": row["total_photo_solves"],
+                "five_forces": {
+                    "curiosity": row["curiosity_score"],
+                    "creativity": row["creativity_score"],
+                    "collaboration": row["collaboration_score"],
+                    "resilience": row["resilience_score"],
+                    "communication": row["communication_score"],
+                },
+                "updated_at": row["updated_at"],
+            })
+        return {"profiles": profiles, "total": len(profiles)}
+    except Exception as e:
+        return {"profiles": [], "total": 0, "error": str(e)}
+# Prompt 资产库管理 API
+# ──────────────────────────────────────────────
+
+@router.get("/prompts")
+async def list_prompt_templates(request: Request):
+    """列出所有 Prompt 模板。"""
+    lib = request.app.state.prompt_library
+    if lib:
+        return {"status": "ok", "templates": lib.list_all()}
+    return {"status": "error", "message": "Prompt library not initialized"}
+
+
+@router.post("/prompts/reload")
+async def reload_prompt_templates(request: Request):
+    """热加载 Prompt 模板（无需重启）。"""
+    lib = request.app.state.prompt_library
+    if lib:
+        lib.reload()
+        return {"status": "ok", "templates": lib.list_all()}
+    return {"status": "error", "message": "Prompt library not initialized"}
+
+
+# ──────────────────────────────────────────────
+# 成长追踪 API（Phase 2: 五力观察 + 成长时间线 + 报告）
+# ──────────────────────────────────────────────
+
+class RecordObservationRequest(BaseModel):
+    learner_id: str
+    dimension: str  # "curiosity" | "creativity" | "collaboration" | "resilience" | "communication"
+    score: float
+    evidence: str
+    context: str = ""
+    observer: str = ""
+
+
+class RecordProjectRequest(BaseModel):
+    learner_id: str
+    project_name: str
+    description: str
+    related_dimensions: list[str] = []
+    media_urls: list[str] = []
+
+
+@router.post("/growth/observation")
+async def record_observation(req: RecordObservationRequest, request: Request):
+    """导师记录一次五力观察。"""
+    orch = request.app.state.orchestrator
+    obs = orch.growth.add_manual_observation(
+        req.learner_id, req.dimension, req.score,
+        req.evidence, req.context, req.observer,
+    )
+    return {
+        "status": "recorded",
+        "learner_id": req.learner_id,
+        "dimension": req.dimension,
+        "new_score": round(orch.growth.get_learner_model(req.learner_id)
+                           .five_forces.get_score(obs.dimension), 1),
+    }
+
+
+@router.post("/growth/project")
+async def record_project(req: RecordProjectRequest, request: Request):
+    """记录学员作品/项目。"""
+    orch = request.app.state.orchestrator
+    orch.growth.add_project_record(
+        req.learner_id, req.project_name, req.description,
+        req.related_dimensions, req.media_urls,
+    )
+    return {"status": "recorded", "learner_id": req.learner_id, "project": req.project_name}
+
+
+@router.get("/growth/timeline/{learner_id}")
+async def get_growth_timeline(learner_id: str, request: Request):
+    """获取学员成长时间线。"""
+    orch = request.app.state.orchestrator
+    timeline = orch.growth.get_timeline(learner_id)
+    return {
+        "learner_id": learner_id,
+        "event_count": len(timeline.events),
+        "milestones": timeline.milestones,
+        "camp_sessions": timeline.camp_sessions,
+        "recent_events": [
+            {
+                "event_id": e.event_id,
+                "title": e.title,
+                "description": e.description,
+                "type": e.event_type,
+                "timestamp": e.timestamp,
+                "dimensions": e.related_dimensions,
+                "tags": e.tags,
+            }
+            for e in timeline.get_recent_events(30)
+        ],
+    }
+
+
+@router.get("/growth/forces/{learner_id}")
+async def get_five_forces(learner_id: str, request: Request):
+    """获取学员五力评估。"""
+    orch = request.app.state.orchestrator
+    await orch.ensure_learner_loaded(learner_id)  # 从持久化恢复
+    learner = orch.growth.get_learner_model(learner_id)
+    return {
+        "learner_id": learner_id,
+        "summary": learner.five_forces.get_summary(),
+        "radar_data": learner.five_forces.get_radar_data(),
+        "observations_count": len(learner.five_forces.observations),
+        "observations": [
+            {
+                "dimension": o.dimension.value,
+                "score": o.score,
+                "evidence": o.evidence,
+                "context": o.context,
+                "observer": o.observer,
+                "timestamp": o.timestamp,
+            }
+            for o in learner.five_forces.observations[-20:]  # 最近20条
+        ],
+    }
+
+
+@router.get("/growth/behaviors/{learner_id}")
+async def get_behavioral_metrics(learner_id: str, request: Request):
+    """获取学员行为信号摘要（趋势二：反馈采纳率、坚持度等）。"""
+    orch = request.app.state.orchestrator
+    return orch.growth.get_behavioral_summary(learner_id)
+
+
+@router.get("/growth/forces/{learner_id}/{dimension}")
+async def get_force_growth(learner_id: str, dimension: str, request: Request):
+    """获取某个五力维度的成长轨迹。"""
+    orch = request.app.state.orchestrator
+    learner = orch.growth.get_learner_model(learner_id)
+    try:
+        from core.five_forces_model import ForceDimension
+        dim = ForceDimension(dimension)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"未知维度: {dimension}")
+
+    return {
+        "learner_id": learner_id,
+        "dimension": dimension,
+        "current_score": learner.five_forces.get_score(dim),
+        "level": learner.five_forces.get_level(dim),
+        "growth_trajectory": learner.five_forces.get_dimension_growth(dim),
+    }
+
+
+@router.post("/growth/report/{learner_id}")
+async def generate_growth_report(
+    learner_id: str,
+    child_name: str = "",
+    camp_name: str = "",
+    season: str = "暑假",
+    age: int = 10,
+    days: int = 7,
+    request: Request = None,
+):
+    """生成学员成长报告（Markdown 格式）。"""
+    orch = request.app.state.orchestrator
+    await orch.ensure_learner_loaded(learner_id)  # 从持久化恢复
+    learner = orch.growth.get_learner_model(learner_id)
+    timeline = orch.growth.get_timeline(learner_id)
+
+    name = child_name or learner_id
+
+    if orch.report_writer is None:
+        from agents.growth.report_writer import ReportWriter
+        orch.report_writer = ReportWriter()
+
+    report = await orch.report_writer.generate_camp_report(
+        child_name=name,
+        learner_id=learner_id,
+        camp_name=camp_name or "营地",
+        season=season,
+        age=age,
+        days=days,
+        five_forces=learner.five_forces,
+        timeline=timeline,
+    )
+
+    return {
+        "learner_id": learner_id,
+        "child_name": name,
+        "markdown": orch.report_writer.export_markdown(report),
+        "sections": [
+            {"title": s.title, "content": s.content, "icon": s.icon, "order": s.order}
+            for s in sorted(report.sections, key=lambda x: x.order)
+        ],
+    }
